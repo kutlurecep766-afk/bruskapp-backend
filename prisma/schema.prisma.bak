@@ -1,0 +1,127 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  domain    String?  @unique
+  siteTitle String   @default("")
+  primaryColor String @default("#6366f1")
+  logoUrl   String   @default("")
+  isConfigured Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+  messages  Message[]
+}
+
+model User {
+  id                  String           @id @default(uuid())
+  email               String           @unique
+  passwordHash        String
+  name                String           @default("")
+  role                String           @default("USER")
+  permissions         String[]
+  tenantId            String
+  tenant              Tenant           @relation(fields: [tenantId], references: [id])
+  twoFactor           TwoFactorSecret?
+  refreshTokens       RefreshToken[]
+  bruteForceAttempts  Int              @default(0)
+  bruteForceBannedAt  DateTime?
+  loginAttempts       LoginAttempt[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+model TwoFactorSecret {
+  id        String   @id @default(uuid())
+  secret    String
+  verified  Boolean  @default(false)
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model LoginAttempt {
+  id        String   @id @default(uuid())
+  email     String
+  success   Boolean
+  ip        String?
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  type      String
+  title     String
+  message   String
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Order {
+  id            Int      @id @default(autoincrement())
+  tenantId      String
+  platform      String
+  customerName  String
+  customerContact String?
+  products      Json
+  totalAmount   Float
+  currency      String   @default("TRY")
+  status        String   @default("pending")
+  note          String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  platform  String
+  from      String
+  content   String
+  direction String @default("incoming")
+  messageId String?
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+
+model Lead {
+  id        Int      @id @default(autoincrement())
+  sessionId String
+  name      String   @default("")
+  phone     String   @default("")
+  email     String   @default("")
+  needs     String   @default("")
+  status    String   @default("yeni")
+  notes     String   @default("")
+  conversation Json   @default("[]")
+  source    String   @default("webchat")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sessionId])
+  @@index([status, createdAt])
+}

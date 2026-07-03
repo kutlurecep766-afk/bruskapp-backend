@@ -1,0 +1,24 @@
+import { Global, Module } from '@nestjs/common'
+import { AppController } from './app.controller'
+import { AppService } from './app.service'
+import { WhatsappModule } from './whatsapp/whatsapp.module'
+import { TelegramModule } from './telegram/telegram.module'
+import { InstagramModule } from './instagram/instagram.module'
+import { TrendyolModule } from './trendyol/trendyol.module'
+import { TrendyolModule } from './trendyol/trendyol.module'
+import { HepsiburadaModule } from './hepsiburada/hepsiburada.module'
+import { NotificationsModule } from './notifications/notifications.module'
+import { MessagesModule } from './messages/messages.module'
+import { ConfigService } from './config.service'
+import { AuthModule } from './auth/auth.module'
+import { PrismaModule } from './prisma.module'
+
+@Global()
+@Module({
+  imports: [PrismaModule, WhatsappModule, TelegramModule, InstagramModule, TrendyolModule, HepsiburadaModule, NotificationsModule,
+    MessagesModule, AuthModule],
+  controllers: [AppController],
+  providers: [AppService, ConfigService],
+  exports: [ConfigService],
+})
+export class AppModule {}

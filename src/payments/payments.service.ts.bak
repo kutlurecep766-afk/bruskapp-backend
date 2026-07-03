@@ -1,0 +1,236 @@
+import { Injectable, HttpException, HttpStatus } from '@nestjs/common'
+import { HttpService } from '@nestjs/axios'
+import { PrismaService } from '../prisma.service'
+import { firstValueFrom } from 'rxjs'
+import * as crypto from 'crypto'
+
+@Injectable()
+export class PaymentsService {
+  constructor(
+    private prisma: PrismaService,
+    private http: HttpService,
+  ) {}
+
+  private async getPaytrKeys(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    const keys = (tenant?.apiKeys as any)?.paytr
+    if (!keys?.merchantId || !keys?.merchantKey || !keys?.merchantSecret) {
+      throw new HttpException('PayTR API anahtarları tanımlanmamış. Lütfen SanalPOS ayarlarından ekleyin.', HttpStatus.BAD_REQUEST)
+    }
+    return keys as { merchantId: string; merchantKey: string; merchantSecret: string }
+  }
+
+  async initPayment(tenantId: string, dto: any, userIp: string) {
+    const keys = await this.getPaytrKeys(tenantId)
+    const merchantOid = `BRSK-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
+    const amount = Math.round(dto.amount * 100)
+
+    const okUrl = `https://bruskapp.com/api/payments/virtual-pos/paytr/result?status=success&oid=${merchantOid}`
+    const failUrl = `https://bruskapp.com/api/payments/virtual-pos/paytr/result?status=fail&oid=${merchantOid}`
+
+    const hashStr = keys.merchantId + merchantOid + keys.merchantSecret + okUrl + failUrl + userIp + amount
+    const paytrToken = Buffer.from(crypto.createHash('sha256').update(hashStr, 'utf-8').digest()).toString('base64')
+
+    const basket = JSON.stringify([[dto.description || 'Ürün', String(amount), '1']])
+    const body = new URLSearchParams({
+      merchant_id: keys.merchantId,
+      user_ip: userIp,
+      merchant_oid: merchantOid,
+      email: dto.email || '',
+      payment_amount: String(amount),
+      currency: 'TL',
+      user_basket: basket,
+      no_installment: '0',
+      max_installment: '0',
+      user_name: dto.name || '',
+      user_address: dto.address || '',
+      user_phone: dto.phone || '',
+      merchant_ok_url: okUrl,
+      merchant_fail_url: failUrl,
+      paytr_token: paytrToken,
+      debug_on: '1',
+    })
+
+    const response = await firstValueFrom(
+      this.http.post('https://www.paytr.com/odeme/api/get-token', body.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      })
+    )
+
+    if (response.data.status !== 'success') {
+      throw new HttpException('PayTR token alınamadı: ' + (response.data.err_msg || 'bilinmeyen hata'), HttpStatus.BAD_REQUEST)
+    }
+
+    await this.prisma.paymentTransaction.create({
+      data: {
+        tenantId,
+        merchantOid,
+        amount,
+        currency: 'TL',
+        status: 'pending',
+        customerEmail: dto.email,
+        customerName: dto.name,
+        customerPhone: dto.phone,
+        description: dto.description,
+      },
+    })
+
+    return { token: response.data.token, merchantOid }
+  }
+
+  async handleCallback(body: any) {
+    const { merchant_oid, status, total_amount, hash } = body
+    if (!merchant_oid) throw new HttpException('Geçersiz callback', HttpStatus.BAD_REQUEST)
+
+    const tx = await this.prisma.paymentTransaction.findUnique({ where: { merchantOid: merchant_oid } })
+    if (!tx) throw new HttpException('İşlem bulunamadı', HttpStatus.NOT_FOUND)
+
+    const keys = await this.getPaytrKeys(tx.tenantId)
+    const expectedHash = Buffer.from(
+      crypto.createHash('sha256').update(keys.merchantId + merchant_oid + status + total_amount + keys.merchantSecret, 'utf-8').digest()
+    ).toString('base64')
+
+    if (hash !== expectedHash) {
+      throw new HttpException('Geçersiz imza', HttpStatus.FORBIDDEN)
+    }
+
+    await this.prisma.paymentTransaction.update({
+      where: { merchantOid: merchant_oid },
+      data: {
+        status: status === 'success' ? 'success' : 'failed',
+        ...(body.card_brand ? { cardBrand: body.card_brand } : {}),
+        ...(body.installment ? { installment: Number(body.installment) } : {}),
+      },
+    })
+
+    return { status, merchantOid: merchant_oid }
+  }
+
+  async createPaymentLink(tenantId: string, dto: any) {
+    const keys = await this.getPaytrKeys(tenantId)
+    const amount = Math.round(dto.amount * 100)
+    const linkId = `LINK-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`
+
+    const body = new URLSearchParams({
+      merchant_id: keys.merchantId,
+      merchant_key: keys.merchantKey,
+      merchant_secret: keys.merchantSecret,
+      link_type: 'link',
+      link_name: dto.description || 'Ödeme',
+      link_amount: String(amount),
+      link_currency: 'TL',
+      link_max_usage_count: String(dto.maxUsage || 0),
+      link_max_usage_time: String(dto.expiryDays || 7),
+    })
+
+    const response = await firstValueFrom(
+      this.http.post('https://www.paytr.com/odeme/link/create', body.toString(), {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      })
+    )
+
+    if (response.data.status !== 'success') {
+      throw new HttpException('PayTR link oluşturulamadı: ' + (response.data.err_msg || 'bilinmeyen hata'), HttpStatus.BAD_REQUEST)
+    }
+
+    await this.prisma.paymentTransaction.create({
+      data: {
+        tenantId,
+        merchantOid: linkId,
+        amount,
+        currency: 'TL',
+        status: 'pending',
+        description: dto.description,
+      },
+    })
+
+    return { link: response.data.link, linkId }
+  }
+
+  async getTransactions(tenantId: string) {
+    return this.prisma.paymentTransaction.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+  }
+
+  async updateApiKeys(tenantId: string, dto: { merchantId: string; merchantKey: string; merchantSecret: string }) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    const currentKeys = (tenant?.apiKeys as any) || {}
+    currentKeys.paytr = {
+      merchantId: dto.merchantId,
+      merchantKey: dto.merchantKey,
+      merchantSecret: dto.merchantSecret,
+    }
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { apiKeys: currentKeys },
+      select: { id: true, name: true, apiKeys: true },
+    })
+  }
+
+  async getApiKeysStatus(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    const keys = (tenant?.apiKeys as any)?.paytr
+    if (!keys?.merchantId) return { configured: false, slug: tenant?.slug || "" }
+    return { configured: true, merchantId: keys.merchantId, slug: tenant?.slug || "" }
+  }
+
+  async updateLegalInfo(tenantId: string, dto: { title: string; taxOffice: string; taxNumber: string; address: string; phone: string; email: string }) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    const currentKeys = (tenant?.apiKeys as any) || {}
+    currentKeys.legalInfo = {
+      title: dto.title || '',
+      taxOffice: dto.taxOffice || '',
+      taxNumber: dto.taxNumber || '',
+      address: dto.address || '',
+      phone: dto.phone || '',
+      email: dto.email || '',
+    }
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { apiKeys: currentKeys },
+    })
+    return { success: true }
+  }
+
+  async getLegalInfo(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    const info = (tenant?.apiKeys as any)?.legalInfo
+    return info || { title: '', taxOffice: '', taxNumber: '', address: '', phone: '', email: '' }
+  }
+
+  async generateContract(type: string, slug: string, host?: string) {
+    let tenant;
+    if (slug) {
+      tenant = await this.prisma.tenant.findUnique({ where: { slug } })
+    } else if (host) {
+      tenant = await this.prisma.tenant.findUnique({ where: { domain: host } })
+      if (!tenant) {
+        const match = host.match(/^(.+?)\.bruskapp\.com(?::\d+)?$/)
+        if (match) { tenant = await this.prisma.tenant.findUnique({ where: { slug: match[1] } }) }
+      }
+    }
+    if (!tenant) return '<!DOCTYPE html><html><body><h1>İşletme bulunamadı</h1></body></html>'
+
+    const info = (tenant.apiKeys as any)?.legalInfo || {}
+    const now = new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })
+
+    if (type === 'mesafeli-satis') {
+      return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mesafeli Satış Sözleşmesi - ${tenant.name}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:800px;margin:0 auto;padding:40px 20px;line-height:1.8;color:#333}h1{font-size:24px;border-bottom:2px solid #000;padding-bottom:10px}h2{font-size:18px;margin-top:30px}p{margin:10px 0}.footer{margin-top:50px;padding-top:20px;border-top:1px solid #ddd;font-size:14px;color:#666}</style></head><body><h1>Mesafeli Satış Sözleşmesi</h1><p><strong>${info.title || tenant.name}</strong></p><p>${info.address || ''}</p><p>Vergi Dairesi: ${info.taxOffice || ''} &nbsp;|&nbsp; Vergi No: ${info.taxNumber || ''}</p><p>Telefon: ${info.phone || ''} &nbsp;|&nbsp; E-posta: ${info.email || ''}</p><hr><h2>Madde 1 - Taraflar</h2><p>İşbu sözleşme, yukarıda ünvanı ve adresi yazılı SATICI ile ALICI arasında aşağıdaki ürün/hizmetin satışına ilişkin olarak elektronik ortamda akdedilmiştir.</p><h2>Madde 2 - Konu</h2><p>İşbu sözleşme, ALICI'nın SATICI'ya ait internet sitesinden sipariş vermesi durumunda, tarafların hak ve yükümlülüklerini düzenler.</p><h2>Madde 3 - Cayma Hakkı</h2><p>ALICI, malın tesliminden itibaren 14 gün içinde hiçbir gerekçe göstermeksizin ve cezai şart ödemeksizin sözleşmeden cayma hakkına sahiptir. Cayma hakkının kullanımı için SATICI'ya bildirim yapılması yeterlidir.</p><h2>Madde 4 - Teslimat</h2><p>Ürünler, sipariş tarihinden itibaren en geç 30 gün içinde teslim edilir. Bu süre içinde teslimat yapılamaması halinde ALICI'ya bilgi verilir.</p><p class="footer">Sözleşme tarihi: ${now}<br>${tenant.name} - ${info.title || ''}</p></body></html>`
+    }
+
+    if (type === 'iade') {
+      return `<!DOCTYPE html><html lang="tr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>İptal ve İade Politikası - ${tenant.name}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;max-width:800px;margin:0 auto;padding:40px 20px;line-height:1.8;color:#333}h1{font-size:24px;border-bottom:2px solid #000;padding-bottom:10px}h2{font-size:18px;margin-top:30px}p{margin:10px 0}.footer{margin-top:50px;padding-top:20px;border-top:1px solid #ddd;font-size:14px;color:#666}</style></head><body><h1>İptal ve İade Politikası</h1><p><strong>${info.title || tenant.name}</strong></p><p>${info.address || ''}</p><p>Telefon: ${info.phone || ''} &nbsp;|&nbsp; E-posta: ${info.email || ''}</p><hr><h2>İade Koşulları</h2><p>Müşterilerimiz, teslimat tarihinden itibaren 14 gün içinde hiçbir gerekçe göstermeksizin ürünü iade edebilir.</p><h2>İade Süreci</h2><p>İade talebinizi ${info.phone || 'telefon'} veya ${info.email || 'e-posta'} üzerinden bize iletebilirsiniz. İade başvurusu onaylandıktan sonra ürünü anlaşmalı kargo ile gönderebilirsiniz.</p><h2>Para İadesi</h2><p>İade onaylandıktan sonra ödeme tutarı, 14 gün içinde ALICI'nın kullandığı ödeme yöntemiyle iade edilir.</p><h2>İade Edilemeyecek Ürünler</h2><p>Kişiselleştirilmiş ürünler, hijyen ürünleri ve elektronik yazılım ürünleri iade edilemez.</p><p class="footer">Son güncelleme: ${now}<br>${tenant.name}</p></body></html>`
+    }
+
+    return '<!DOCTYPE html><html><body><h1>Sözleşme bulunamadı</h1></body></html>'
+  }
+
+  async initPaymentBySlug(tenantSlug: string, dto: any, userIp: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { slug: tenantSlug } })
+    if (!tenant) throw new HttpException('İşletme bulunamadı', HttpStatus.NOT_FOUND)
+    return this.initPayment(tenant.id, dto, userIp)
+  }
+}
