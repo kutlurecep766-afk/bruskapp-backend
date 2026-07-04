@@ -23,6 +23,7 @@ import { ProductsModule } from './products/products.module'
 import { UploadsModule } from './uploads/uploads.module'
 import { PaymentsModule } from './payments/payments.module'
 import { PrinterModule } from './printer/printer.module'
+import { EInvoiceModule } from './einvoice/einvoice.module'
 
 @Global()
 @Module({
@@ -34,7 +35,7 @@ import { PrinterModule } from './printer/printer.module'
     }]),
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, TrendyolModule, HepsiburadaModule,
     KargomucuzModule,
-    OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule,
+    OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,
   ],
   controllers: [AppController],
   providers: [
