@@ -159,7 +159,7 @@ export class NilveraProvider {
               InvoiceSerieOrNumber: config.invoiceSerie,
               IssueDate: req.issueDate || now,
               CurrencyCode: 'TRY',
-              InvoiceProfile: 'TICARIFATURA',
+              InvoiceProfile: req.profileId || 'TICARIFATURA',
               LineExtensionAmount: totalBeforeTax,
               PayableAmount: payable,
               KdvTotal: kdvTotal,

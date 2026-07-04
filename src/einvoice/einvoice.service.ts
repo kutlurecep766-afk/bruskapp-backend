@@ -5,6 +5,7 @@ import { IzibizProvider } from './providers/izibiz.provider'
 import { EdmProvider } from './providers/edm.provider'
 import { QnbProvider } from './providers/qnb.provider'
 import { EInvoiceProvider, SendInvoiceRequest } from './types'
+import { detectInvoiceType, cleanEInvoiceError } from './ubl-transformer'
 
 @Injectable()
 export class EInvoiceService {
@@ -45,7 +46,11 @@ export class EInvoiceService {
       return { success: false, error: 'Kullanıcı adı veya API anahtarı gerekli' }
     }
     const prov = this.getProvider(provider as EInvoiceProvider)
-    return prov.testConnection(credentials)
+    const result = await prov.testConnection(credentials)
+    if (!result.success && result.error) {
+      result.error = cleanEInvoiceError(result.error)
+    }
+    return result
   }
 
   async sendInvoice(tenantId: string, req: SendInvoiceRequest) {
@@ -53,11 +58,20 @@ export class EInvoiceService {
     const provider = config.selectedProvider || EInvoiceProvider.NILVERA
     const providerConfig = config[provider]
     if (!providerConfig?.credentials) {
-      throw new BadRequestException('Lutfen fatura entegratoru ayarlarini yapin')
+      throw new BadRequestException('Lütfen fatura entegratörü ayarlarını yapın')
+    }
+    const autoType = detectInvoiceType(req.customer.vkn, req.customer.tckn)
+    const finalReq: SendInvoiceRequest = {
+      ...req,
+      type: req.type || autoType,
+      profileId: req.profileId || (autoType === 'invoice' ? 'TICARIFATURA' : 'EARSIVFATURA'),
     }
     const prov = this.getProvider(provider as EInvoiceProvider)
-    const result = await prov.sendInvoice(providerConfig.credentials, req)
-    this.logger.log(`Fatura gonderildi: ${provider} - ${result.invoiceNumber || result.uuid}`)
+    const result = await prov.sendInvoice(providerConfig.credentials, finalReq)
+    if (!result.success && result.error) {
+      result.error = cleanEInvoiceError(result.error)
+    }
+    this.logger.log(`Fatura gönderildi: ${provider} - ${result.invoiceNumber || result.uuid}`)
     return result
   }
 

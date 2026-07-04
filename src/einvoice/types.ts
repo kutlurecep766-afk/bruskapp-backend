@@ -38,6 +38,7 @@ export interface SendInvoiceRequest {
   description?: string
   salesPlatform?: 'NORMAL' | 'INTERNET'
   sendType?: 'KAGIT' | 'ELEKTRONIK'
+  profileId?: 'TICARIFATURA' | 'TEMELFATURA' | 'EARSIVFATURA'
 }
 
 export interface SendInvoiceResponse {

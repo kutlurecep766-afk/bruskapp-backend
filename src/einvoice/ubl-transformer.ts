@@ -1,4 +1,4 @@
-import { SendInvoiceRequest, EInvoiceLine } from './types'
+import { SendInvoiceRequest, InvoiceType } from './types'
 
 export interface UblOptions {
   profileId: string
@@ -244,4 +244,34 @@ export function generateInvoiceId(serie: string): string {
   const year = new Date().getFullYear().toString()
   const serial = String(Math.floor(Math.random() * 999999999) + 1).padStart(9, '0')
   return `${serie}${year}${serial}`
+}
+
+const errorPatterns: [RegExp, string][] = [
+  [/vergi\s*(no|numarası|kimlik).*(geçersiz|hatalı|bulunamadı)/i, 'Vergi numarası sistemde bulunamadı, lütfen kontrol edin'],
+  [/vkn|tckn|tax.?number/i, 'Vergi kimlik numarası hatalı, 10 veya 11 hane olmalıdır'],
+  [/mükellef|mukellef/i, 'Vergi numarası e-fatura mükellefi değil'],
+  [/seri|seri.?no|prefix|invoice.?number.*(kullanılmış|mevcut)/i, 'Bu fatura numarası daha önce kullanılmış, lütfen farklı bir seri deneyin'],
+  [/ubl.*valid|xsd|schema.*invalid|şema/i, 'Fatura XML formatı hatalı, lütfen destek ekibine başvurun'],
+  [/şematron|schematron/i, 'Fatura içeriği GİB kurallarına uymuyor, lütfen bilgileri kontrol edin'],
+  [/timeout|timed.?out|bağlantı.*zaman.*aştı/i, 'Bağlantı zaman aştı, lütfen tekrar deneyin'],
+  [/oturum|session.*invalid|geçersiz.*oturum/i, 'Oturum süresi dolmuş, lütfen tekrar deneyin'],
+  [/yetki|yetkisiz|authorization|unauthorized|forbidden/i, 'API kullanıcı adı veya şifre hatalı'],
+  [/network|econnrefused|enotfound|enotreach/i, 'Sunucuya bağlanılamadı, internet bağlantınızı kontrol edin'],
+  [/500|internal.*server/i, 'Entegratör sunucusunda hata oluştu, lütfen daha sonra tekrar deneyin'],
+  [/4\d{2}/, 'Geçersiz istek, lütfen bilgileri kontrol edin'],
+]
+
+export function cleanEInvoiceError(raw: string): string {
+  if (!raw) return 'Bilinmeyen hata'
+  for (const [pattern, msg] of errorPatterns) {
+    if (pattern.test(raw)) return msg
+  }
+  if (raw.length > 120) return 'Fatura gönderilirken beklenmeyen bir hata oluştu'
+  return raw
+}
+
+export function detectInvoiceType(vkn?: string, tckn?: string): InvoiceType {
+  const id = vkn || tckn || ''
+  if (id.length <= 10 && id.length > 0) return 'invoice'
+  return 'archive'
 }

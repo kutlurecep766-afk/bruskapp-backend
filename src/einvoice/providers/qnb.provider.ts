@@ -60,7 +60,7 @@ export class QnbProvider {
     const customerSchemeId = this.getSchemeId(customerId)
     const supplierSchemeId = this.getSchemeId(cred.companyTaxNumber || '')
 
-    const profileId = req.type === 'archive' ? 'EARSIVFATURA' : 'TICARIFATURA'
+    const profileId = req.profileId || (req.type === 'archive' ? 'EARSIVFATURA' : 'TICARIFATURA')
 
     const invoiceLinesXml = req.lines.map((line, i) => {
       const lineTotal = line.quantity * line.unitPrice
