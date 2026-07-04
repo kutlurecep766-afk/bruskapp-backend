@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, Logger } from '@nestjs/common'
+import { Controller, Get, Post, Param, Body, Query, Logger, BadRequestException } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
 import { Public } from '../auth/public.decorator'
 import { OrdersService } from './orders.service'
@@ -28,6 +28,12 @@ export class OrdersController {
     tableNumber?: number | null
     waiterId?: string | null
   }) {
+    if (!body.tenantId) {
+      throw new BadRequestException('tenantId alanı zorunludur')
+    }
+    if (!body.customerName) {
+      throw new BadRequestException('Müşteri adı zorunludur')
+    }
     const order = await this.ordersService.create({
       ...body,
       tableNumber: body.tableNumber ?? null,
