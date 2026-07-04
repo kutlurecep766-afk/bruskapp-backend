@@ -52,6 +52,12 @@ export class NilveraProvider {
     }
   }
 
+  async checkUser(_credentials: Record<string, string>, taxNumber: string): Promise<{ registered: boolean; error?: string }> {
+    const id = taxNumber || ''
+    const registered = id.length <= 10 && id.length > 0
+    return { registered }
+  }
+
   async fetchTemplates(credentials: Record<string, string>): Promise<{ success: boolean; templates?: any[]; error?: string }> {
     try {
       const apiKey = credentials.apiKey

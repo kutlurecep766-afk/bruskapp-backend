@@ -54,4 +54,5 @@ export interface EInvoiceProviderInterface {
   testConnection(config: Record<string, string>): Promise<{ success: boolean; error?: string }>
   sendInvoice(config: Record<string, string>, req: SendInvoiceRequest): Promise<SendInvoiceResponse>
   getInvoiceStatus?(config: Record<string, string>, uuid: string): Promise<SendInvoiceResponse>
+  checkUser?(config: Record<string, string>, taxNumber: string): Promise<{ registered: boolean; error?: string }>
 }

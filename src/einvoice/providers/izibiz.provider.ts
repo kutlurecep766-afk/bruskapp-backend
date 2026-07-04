@@ -74,6 +74,27 @@ export class IzibizProvider {
     }
   }
 
+  async checkUser(credentials: Record<string, string>, taxNumber: string): Promise<{ registered: boolean; error?: string }> {
+    try {
+      const cred = credentials as unknown as IzibizCredentials
+      const testMode = cred.testMode !== 'false'
+      const urls = this.getUrls(testMode)
+      const sessionId = await this.login(urls, cred)
+      const client = await soap.createClientAsync(urls.einvoice, { wsdl_options: { timeout: 15000 } })
+      const [result] = await client.CheckUserAsync({
+        REQUEST_HEADER: { SESSION_ID: sessionId, APPLICATION_NAME: 'bruskapp' },
+        USER: { IDENTIFIER: taxNumber },
+        DOCUMENT_TYPE: 'INVOICE',
+      })
+      const users = result?.USER
+      const registered = users && (Array.isArray(users) ? users.length > 0 : true)
+      return { registered: !!registered }
+    } catch (err: any) {
+      this.logger.error(`İzibiz checkUser failed: ${err.message}`)
+      return { registered: false, error: 'Mükellef sorgulanamadı' }
+    }
+  }
+
   async sendInvoice(credentials: Record<string, string>, req: SendInvoiceRequest): Promise<SendInvoiceResponse> {
     try {
       const cred = credentials as unknown as IzibizCredentials

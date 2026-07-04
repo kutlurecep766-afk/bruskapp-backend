@@ -69,6 +69,26 @@ export class EdmProvider {
     }
   }
 
+  async checkUser(credentials: Record<string, string>, taxNumber: string): Promise<{ registered: boolean; error?: string }> {
+    try {
+      const cred = credentials as unknown as EdmCredentials
+      const urls = this.getUrls(cred.testMode !== 'false')
+      const client = await soap.createClientAsync(urls.wsdl, { wsdl_options: { timeout: 15000 }, endpoint: urls.address })
+      const sessionId = await this.login(urls, cred)
+      const [result] = await client.CheckUserAsync({
+        REQUEST_HEADER: { SESSION_ID: sessionId, APPLICATION_NAME: 'bruskapp', COMPRESSED: 'N' },
+        USER: { IDENTIFIER: taxNumber },
+        DOCUMENT_TYPE: 'INVOICE',
+      })
+      const users = result?.USER
+      const registered = users && (Array.isArray(users) ? users.length > 0 : true)
+      return { registered: !!registered }
+    } catch (err: any) {
+      this.logger.error(`EDM checkUser failed: ${err.message}`)
+      return { registered: false, error: 'Mükellef sorgulanamadı' }
+    }
+  }
+
   async sendInvoice(credentials: Record<string, string>, req: SendInvoiceRequest): Promise<SendInvoiceResponse> {
     try {
       const cred = credentials as unknown as EdmCredentials

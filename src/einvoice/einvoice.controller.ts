@@ -28,6 +28,13 @@ export class EInvoiceController {
     return { success: true, message: 'Bağlantı başarılı' }
   }
 
+  @Public()
+  @Post('check-taxpayer')
+  @HttpCode(200)
+  async checkTaxpayer(@Body() body: { taxNumber: string }) {
+    return this.einvoiceService.checkTaxpayer('default', body.taxNumber)
+  }
+
   @Post('templates')
   async fetchTemplates(@Req() req: any, @Body('provider') provider: string) {
     return this.einvoiceService.fetchTemplates(req.user?.tenantId || '', provider)

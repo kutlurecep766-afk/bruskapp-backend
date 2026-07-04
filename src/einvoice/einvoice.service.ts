@@ -53,6 +53,36 @@ export class EInvoiceService {
     return result
   }
 
+  async checkTaxpayer(tenantId: string, taxNumber: string): Promise<{ registered: boolean; invoiceType: string; error?: string }> {
+    if (!taxNumber || taxNumber.length < 10) {
+      const fallbackType = detectInvoiceType(taxNumber, '')
+      return { registered: fallbackType === 'invoice', invoiceType: fallbackType, error: 'Geçersiz vergi numarası' }
+    }
+    const config = await this.getConfig(tenantId)
+    const provider = config.selectedProvider || EInvoiceProvider.NILVERA
+    const providerConfig = config[provider]
+    if (!providerConfig?.credentials) {
+      const fallbackType = detectInvoiceType(taxNumber, '')
+      return { registered: fallbackType === 'invoice', invoiceType: fallbackType }
+    }
+    const prov = this.getProvider(provider as EInvoiceProvider)
+    if (typeof (prov as any).checkUser !== 'function') {
+      const fallbackType = detectInvoiceType(taxNumber, '')
+      return { registered: fallbackType === 'invoice', invoiceType: fallbackType }
+    }
+    try {
+      const result = await (prov as any).checkUser(providerConfig.credentials, taxNumber)
+      return {
+        registered: result.registered,
+        invoiceType: result.registered ? 'invoice' : 'archive',
+        error: result.error ? cleanEInvoiceError(result.error) : undefined,
+      }
+    } catch {
+      const fallbackType = detectInvoiceType(taxNumber, '')
+      return { registered: fallbackType === 'invoice', invoiceType: fallbackType }
+    }
+  }
+
   async sendInvoice(tenantId: string, req: SendInvoiceRequest) {
     const config = await this.getConfig(tenantId)
     const provider = config.selectedProvider || EInvoiceProvider.NILVERA
@@ -60,11 +90,18 @@ export class EInvoiceService {
     if (!providerConfig?.credentials) {
       throw new BadRequestException('Lütfen fatura entegratörü ayarlarını yapın')
     }
-    const autoType = detectInvoiceType(req.customer.vkn, req.customer.tckn)
+    let invoiceType = req.type
+    if (!invoiceType && req.customer.vkn) {
+      const check = await this.checkTaxpayer(tenantId, req.customer.vkn)
+      invoiceType = check.invoiceType as 'invoice' | 'archive'
+    }
+    if (!invoiceType) {
+      invoiceType = detectInvoiceType(req.customer.vkn, req.customer.tckn) as 'invoice' | 'archive'
+    }
     const finalReq: SendInvoiceRequest = {
       ...req,
-      type: req.type || autoType,
-      profileId: req.profileId || (autoType === 'invoice' ? 'TICARIFATURA' : 'EARSIVFATURA'),
+      type: invoiceType,
+      profileId: req.profileId || (invoiceType === 'invoice' ? 'TICARIFATURA' : 'EARSIVFATURA'),
     }
     const prov = this.getProvider(provider as EInvoiceProvider)
     const result = await prov.sendInvoice(providerConfig.credentials, finalReq)

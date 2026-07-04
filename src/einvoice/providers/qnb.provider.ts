@@ -258,6 +258,21 @@ export class QnbProvider {
     }
   }
 
+  async checkUser(credentials: Record<string, string>, taxNumber: string): Promise<{ registered: boolean; error?: string }> {
+    try {
+      const cred = credentials as unknown as QnbCredentials
+      const testMode = cred.testMode !== 'false'
+      const urls = this.getUrls(testMode)
+      const client = await this.createSoapClient(urls.efatura, cred.username, cred.password)
+      const [result] = await client.efaturaKullanicisiAsync({ vergiTcKimlikNo: taxNumber })
+      const isRegistered = Number(result?.return ?? result) === 1
+      return { registered: isRegistered }
+    } catch (err: any) {
+      this.logger.error(`QNB checkUser failed: ${err.message}`)
+      return { registered: false, error: 'Mükellef sorgulanamadı' }
+    }
+  }
+
   async sendInvoice(credentials: Record<string, string>, req: SendInvoiceRequest): Promise<SendInvoiceResponse> {
     try {
       const cred = credentials as unknown as QnbCredentials
