@@ -24,6 +24,7 @@ import { UploadsModule } from './uploads/uploads.module'
 import { PaymentsModule } from './payments/payments.module'
 import { PrinterModule } from './printer/printer.module'
 import { EInvoiceModule } from './einvoice/einvoice.module'
+import { YemeksepetiModule } from './yemeksepeti/yemeksepeti.module'
 
 @Global()
 @Module({
@@ -36,6 +37,7 @@ import { EInvoiceModule } from './einvoice/einvoice.module'
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, TrendyolModule, HepsiburadaModule,
     KargomucuzModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,
+    YemeksepetiModule,
   ],
   controllers: [AppController],
   providers: [
