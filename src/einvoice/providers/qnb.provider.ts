@@ -249,7 +249,7 @@ export class QnbProvider {
       const isRegistered = Number(result?.return ?? result) === 1
       return {
         success: isRegistered,
-        ...(isRegistered ? {} : { error: 'Vergi numarasi QNB e-Fatura sisteminde kayitli degil' }),
+        ...(isRegistered ? {} : { error: 'Vergi numarası QNB e-Fatura sisteminde kayıtlı değil' }),
       }
     } catch (err: any) {
       this.logger.error(`QNB testConnection failed: ${err.message}`)
@@ -332,7 +332,7 @@ export class QnbProvider {
           uuid: belgeOid,
           invoiceNumber: '',
           status: belgeOid ? 'GÖNDERİLDİ' : 'HATA',
-          ...(belgeOid ? {} : { error: 'e-Fatura gonderilemedi' }),
+          ...(belgeOid ? {} : { error: 'e-Fatura gönderilemedi' }),
         }
       }
     } catch (err: any) {

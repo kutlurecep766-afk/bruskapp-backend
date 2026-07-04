@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Body, Req } from '@nestjs/common'
+import { Controller, Get, Post, Body, Req, HttpCode } from '@nestjs/common'
+import { Public } from '../auth/public.decorator'
 import { EInvoiceService } from './einvoice.service'
 import { SendInvoiceRequest } from './types'
 
@@ -16,9 +17,15 @@ export class EInvoiceController {
     return this.einvoiceService.saveConfig(req.user?.tenantId || '', body)
   }
 
+  @Public()
   @Post('test')
-  async testConnection(@Req() req: any, @Body('provider') provider: string) {
-    return this.einvoiceService.testConnection(req.user?.tenantId || '', provider)
+  @HttpCode(200)
+  async testConnection(@Body() body: { provider: string; credentials?: Record<string, string> }) {
+    const result = await this.einvoiceService.testConnection(body.provider, body.credentials)
+    if (!result.success) {
+      return { success: false, error: result.error || 'Bağlantı hatası' }
+    }
+    return { success: true, message: 'Bağlantı başarılı' }
   }
 
   @Post('templates')

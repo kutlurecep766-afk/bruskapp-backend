@@ -37,14 +37,15 @@ export class EInvoiceService {
     return merged
   }
 
-  async testConnection(tenantId: string, provider: string) {
-    const config = await this.getConfig(tenantId)
-    const providerConfig = config[provider]
-    if (!providerConfig?.credentials) {
-      throw new BadRequestException(`Bu saglayici icin ayar bulunamadi: ${provider}`)
+  async testConnection(provider: string, credentials?: Record<string, string>) {
+    if (!credentials) {
+      return { success: false, error: 'Lütfen bağlantı bilgilerini girin' }
+    }
+    if (!credentials.username && !credentials.apiKey) {
+      return { success: false, error: 'Kullanıcı adı veya API anahtarı gerekli' }
     }
     const prov = this.getProvider(provider as EInvoiceProvider)
-    return prov.testConnection(providerConfig.credentials)
+    return prov.testConnection(credentials)
   }
 
   async sendInvoice(tenantId: string, req: SendInvoiceRequest) {
