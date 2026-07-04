@@ -1,0 +1,1 @@
+ALTER TABLE "Tenant" ADD COLUMN "einvoiceConfig" JSON NOT NULL DEFAULT '{}';
