@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import * as soap from 'soap'
-import { randomUUID, createHash } from 'crypto'
+import { randomUUID } from 'crypto'
 import { SendInvoiceRequest, SendInvoiceResponse } from '../types'
 
 interface EdmCredentials {
@@ -23,26 +23,24 @@ export class EdmProvider {
   private readonly logger = new Logger(EdmProvider.name)
 
   private getUrls(testMode: boolean) {
+    const base = testMode
+      ? 'https://test.edmbilisim.com.tr/EFaturaEDM21ea'
+      : 'https://efatura.edmbilisim.com.tr/EFaturaEDM21ea'
     return {
-      auth: testMode
-        ? 'https://test.edmbilisim.com.tr/EDM/WebService/AuthService.asmx?wsdl'
-        : 'https://efatura.edmbilisim.com.tr/EDM/WebService/AuthService.asmx?wsdl',
-      einvoice: testMode
-        ? 'https://test.edmbilisim.com.tr/EDM/WebService/EFaturaService.asmx?wsdl'
-        : 'https://efatura.edmbilisim.com.tr/EDM/WebService/EFaturaService.asmx?wsdl',
-      earchive: testMode
-        ? 'https://test.edmbilisim.com.tr/EDM/WebService/EArsivService.asmx?wsdl'
-        : 'https://efatura.edmbilisim.com.tr/EDM/WebService/EArsivService.asmx?wsdl',
+      wsdl: `${base}/EFaturaEDM.svc?singleWsdl`,
+      address: `${base}/EFaturaEDM.svc`,
     }
   }
 
-  private async login(urls: { auth: string }, cred: EdmCredentials): Promise<string> {
-    const client = await soap.createClientAsync(urls.auth, { wsdl_options: { timeout: 15000 } })
-    const [result] = await client.LoginAsync({
-      kullaniciAdi: cred.username,
-      sifre: cred.password,
-    })
-    const sessionId = result?.LoginResult || result?.SessionID || result?.token
+  private async login(urls: { wsdl: string; address: string }, cred: EdmCredentials): Promise<string> {
+    const client = await soap.createClientAsync(urls.wsdl, { wsdl_options: { timeout: 15000 }, endpoint: urls.address })
+    const params = {
+      REQUEST_HEADER: { SESSION_ID: '', APPLICATION_NAME: 'bruskapp' },
+      USER_NAME: cred.username,
+      PASSWORD: cred.password,
+    }
+    const [result] = await client.LoginAsync(params)
+    const sessionId = result?.SESSION_ID
     if (!sessionId) throw new Error('EDM oturum açılamadı')
     return sessionId
   }
@@ -65,44 +63,51 @@ export class EdmProvider {
       const cred = credentials as unknown as EdmCredentials
       const testMode = cred.testMode !== 'false'
       const urls = this.getUrls(testMode)
+      const client = await soap.createClientAsync(urls.wsdl, { wsdl_options: { timeout: 30000 }, endpoint: urls.address })
       const sessionId = await this.login(urls, cred)
 
       const uuid = randomUUID().toUpperCase()
       const serie = req.type === 'archive' ? (cred.archiveSerie || 'EDM') : (cred.invoiceSerie || 'EDM')
       const invoiceId = this.generateInvoiceId(serie)
-      const ublXml = this.buildUblInvoice(req, cred, invoiceId, uuid, req.type === 'archive' ? 'EARSIVFATURA' : 'TICARIFATURA')
+      const profileId = req.type === 'archive' ? 'EARSIVFATURA' : 'TICARIFATURA'
+      const ublXml = this.buildUblInvoice(req, cred, invoiceId, uuid, profileId)
 
-      if (req.type === 'archive') {
-        const client = await soap.createClientAsync(urls.earchive, { wsdl_options: { timeout: 30000 } })
-        const [result] = await client.EArsivFaturaGonderAsync({
-          sessionId,
+      const base64Content = Buffer.from(ublXml, 'utf-8').toString('base64')
+
+      const params = {
+        REQUEST_HEADER: {
+          SESSION_ID: sessionId,
+          COMPRESSED: 'N',
+          APPLICATION_NAME: 'bruskapp',
+          CHANNEL_NAME: 'bruskapp',
+        },
+        SENDER: {
           vkn: cred.companyTaxNumber || '',
-          faturaNo: invoiceId,
-          uuid,
-          xml: ublXml,
-          email: req.customer.email || '',
-        })
+          alias: '',
+        },
+        RECEIVER: {
+          vkn: this.getCustomerId(req),
+          alias: '',
+        },
+        INVOICE: {
+          CONTENT: base64Content,
+        },
+      }
+
+      const [result] = await client.SendInvoiceAsync(params)
+
+      if (result?.ERROR_TYPE) {
         return {
-          success: true,
-          uuid,
-          invoiceNumber: result?.faturaNo || invoiceId,
-          status: 'GÖNDERİLDİ',
+          success: false,
+          error: `EDM hata: ${result.ERROR_TYPE.ERROR_SHORT_DESC || result.ERROR_TYPE.ERROR_CODE || 'Bilinmeyen hata'}`,
         }
-      } else {
-        const client = await soap.createClientAsync(urls.einvoice, { wsdl_options: { timeout: 30000 } })
-        const [result] = await client.EFaturaGonderAsync({
-          sessionId,
-          vkn: cred.companyTaxNumber || '',
-          faturaNo: invoiceId,
-          uuid,
-          xml: ublXml,
-        })
-        return {
-          success: true,
-          uuid,
-          invoiceNumber: invoiceId,
-          status: String(result?.sonuc || 'GÖNDERİLDİ'),
-        }
+      }
+
+      return {
+        success: true,
+        uuid,
+        invoiceNumber: result?.REQUEST_RETURN?.INVOICE_ID || invoiceId,
+        status: String(result?.REQUEST_RETURN?.RETURN_CODE || ''),
       }
     } catch (err: any) {
       this.logger.error(`EDM sendInvoice failed: ${err.message}`)
