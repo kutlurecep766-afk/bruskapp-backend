@@ -8,7 +8,7 @@ import type { TrendyolCredentials, TrendyolProduct, TrendyolOrder, TrendyolMessa
 @Injectable()
 export class TrendyolService {
   private readonly logger = new Logger(TrendyolService.name)
-  private readonly baseUrl = 'https://api.trendyol.com/sapigw'
+  private readonly baseUrl = 'https://apigw.trendyol.com/integration'
 
   constructor(
     private readonly http: HttpService,
@@ -74,7 +74,7 @@ export class TrendyolService {
     try {
       const encoded = Buffer.from(creds.apiKey + ':' + creds.apiSecret).toString('base64')
       const res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/suppliers/' + creds.supplierId + '/products', {
+        this.http.get(this.baseUrl + '/product/sellers/' + creds.supplierId + '/products/approved', {
           headers: { Authorization: 'Basic ' + encoded, 'User-Agent': creds.supplierId + ' - SelfIntegration' },
           params: { page: 0, size: 1 },
         })
@@ -92,7 +92,7 @@ export class TrendyolService {
     let res
     try {
       res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/suppliers/' + creds.supplierId + '/products', {
+        this.http.get(this.baseUrl + '/product/sellers/' + creds.supplierId + '/products/approved', {
           headers: this.getAuthHeaders(creds),
           params: { page, size },
         })
@@ -135,8 +135,8 @@ export class TrendyolService {
     const items = updates.map(u => ({ barcode: u.barcode, quantity: u.quantity }))
     try {
       await lastValueFrom(
-        this.http.put(
-          this.baseUrl + '/suppliers/' + creds.supplierId + '/products/stock-and-price',
+        this.http.post(
+          this.baseUrl + '/inventory/sellers/' + creds.supplierId + '/products/price-and-inventory',
           { items },
           { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
         )
@@ -162,7 +162,7 @@ export class TrendyolService {
     let res
     try {
       res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/suppliers/' + creds.supplierId + '/orders', {
+        this.http.get(this.baseUrl + '/order/sellers/' + creds.supplierId + '/orders', {
           headers: this.getAuthHeaders(creds),
           params,
         })
@@ -251,17 +251,17 @@ export class TrendyolService {
     const creds = await this.getCredentials(tenantId)
     try {
       const res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/suppliers/' + creds.supplierId + '/messages', {
+        this.http.get(this.baseUrl + '/qna/sellers/' + creds.supplierId + '/questions/filter', {
           headers: this.getAuthHeaders(creds),
         })
       )
-      return (res.data || []).map((m: any) => ({
-        id: String(m.id || ''),
-        from: m.senderName || m.senderId || '',
-        subject: m.subject || '',
-        body: m.message || m.body || '',
+      return (res.data?.content || res.data || []).map((m: any) => ({
+        id: String(m.id || m.questionId || ''),
+        from: m.senderName || m.senderId || m.customerName || '',
+        subject: m.subject || m.title || '',
+        body: m.message || m.body || m.content || '',
         createdAt: m.createDateTime || m.createdAt || '',
-        read: m.read || false,
+        read: m.read || m.isRead || false,
       }))
     } catch (e: any) {
       this.logger.error('Mesajlar alinamadi:', e?.response?.data || e.message)
@@ -274,8 +274,8 @@ export class TrendyolService {
     try {
       await lastValueFrom(
         this.http.post(
-          this.baseUrl + '/suppliers/' + creds.supplierId + '/messages',
-          { recipientId: messageId, message: text, subject: 'BruskApp mesaji' },
+          this.baseUrl + '/qna/sellers/' + creds.supplierId + '/questions/' + messageId + '/answer',
+          { answer: text },
           { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
         )
       )
@@ -291,7 +291,7 @@ export class TrendyolService {
     try {
       await lastValueFrom(
         this.http.post(
-          this.baseUrl + '/integration/webhook/sellers/' + creds.supplierId + '/webhooks',
+          this.baseUrl + '/webhook/sellers/' + creds.supplierId + '/webhooks',
           { url: webhookUrl, webhookType: 'ORDER', webhookAddress: webhookUrl },
           { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
         )
@@ -313,7 +313,6 @@ export class TrendyolService {
       return
     }
 
-    // Sync orders to get latest data
     try {
       await this.getOrders(tenant.id, 0, 50)
       this.logger.log('Webhook ile siparis senkronize: ' + orderId)
