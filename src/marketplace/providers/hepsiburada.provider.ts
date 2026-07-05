@@ -39,14 +39,6 @@ export class HepsiburadaProvider implements MarketplaceProvider {
     return this.hepsiburadaService.updateStock(tenantId, updates) as any
   }
 
-  async getMessages(tenantId: string) {
-    return this.hepsiburadaService.getMessages(tenantId) as any
-  }
-
-  async replyMessage(tenantId: string, messageId: string, text: string) {
-    return this.hepsiburadaService.replyMessage(tenantId, messageId, text) as any
-  }
-
   async handleWebhook(tenantSlug: string, body: any) {
     return this.hepsiburadaService.handleWebhook(tenantSlug, body)
   }

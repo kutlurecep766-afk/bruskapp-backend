@@ -69,20 +69,6 @@ export class HepsiburadaController {
     return this.hepsiburadaService.getOrders(tenantId, parseInt(page || '0'), parseInt(size || '50'), status)
   }
 
-  @Get('messages')
-  async getMessages(@Req() req: any) {
-    const tenantId = this.extractTenant(req)
-    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
-    return this.hepsiburadaService.getMessages(tenantId)
-  }
-
-  @Post('messages/:id/reply')
-  async replyMessage(@Req() req: any, @Param('id') id: string, @Body() body: { message: string }) {
-    const tenantId = this.extractTenant(req)
-    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
-    return this.hepsiburadaService.replyMessage(tenantId, id, body.message)
-  }
-
   @Public()
   @Post('webhook/callback/:tenantSlug')
   async webhookCallback(@Param('tenantSlug') tenantSlug: string, @Body() body: any) {

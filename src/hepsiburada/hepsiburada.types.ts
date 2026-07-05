@@ -34,15 +34,6 @@ export interface HepsiburadaOrder {
   orderDate: string
 }
 
-export interface HepsiburadaMessage {
-  id: string
-  from: string
-  subject: string
-  body: string
-  createdAt: string
-  read: boolean
-}
-
 export interface StockUpdate {
   barcode: string
   quantity: number
