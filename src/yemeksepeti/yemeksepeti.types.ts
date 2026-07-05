@@ -1,8 +1,8 @@
 export interface YemeksepetiConfig {
   clientId: string
   clientSecret: string
-  restaurantId: string
-  testMode?: string
+  chainId: string
+  vendorId: string
 }
 
 export interface YemeksepetiTokenResponse {

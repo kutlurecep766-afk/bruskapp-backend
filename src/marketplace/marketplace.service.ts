@@ -89,9 +89,10 @@ export class MarketplaceService {
         fields: [
           { key: 'clientId', label: 'Client ID', placeholder: 'client-id' },
           { key: 'clientSecret', label: 'Client Secret', placeholder: 'client-secret', type: 'password' },
-          { key: 'restaurantId', label: 'Restoran ID', placeholder: '123456' },
+          { key: 'chainId', label: 'Chain ID', placeholder: 'chain-id' },
+          { key: 'vendorId', label: 'Vendor ID (Mağaza ID)', placeholder: 'vendor-id' },
         ],
-        description: 'Yemeksepeti partner portalından (integration.yemeksepeti.com) Client ID, Client Secret ve Restoran ID bilgilerini girin.',
+        description: 'Yemeksepeti partner portalından (developer.yemeksepeti.com) Client ID, Client Secret, Chain ID ve Vendor ID bilgilerini girin.',
       },
       {
         platform: 'trendyolgo',
@@ -99,11 +100,12 @@ export class MarketplaceService {
         color: 'emerald',
         gradient: 'from-emerald-600 to-emerald-500',
         fields: [
-          { key: 'clientId', label: 'Client ID', placeholder: 'client-id' },
-          { key: 'clientSecret', label: 'Client Secret', placeholder: 'client-secret', type: 'password' },
+          { key: 'supplierId', label: 'Satıcı ID (Supplier ID)', placeholder: '123456' },
+          { key: 'apiKey', label: 'API Key', placeholder: 'api-key' },
+          { key: 'apiSecretKey', label: 'API Secret Key', placeholder: 'api-secret-key', type: 'password' },
           { key: 'storeId', label: 'Mağaza ID (Store ID)', placeholder: '123456' },
         ],
-        description: 'Trendyol Go partner portalından (developers.tgoapps.com) Client ID, Client Secret ve Mağaza ID bilgilerini girin.',
+        description: 'Trendyol Go satıcı panelinden (Hesap Bilgilerim > Entegrasyon Bilgileri) Supplier ID, API Key, API Secret Key ve Mağaza ID bilgilerini girin.',
       },
       {
         platform: 'amazon',

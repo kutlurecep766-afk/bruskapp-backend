@@ -14,8 +14,22 @@ export class TrendyolGoProvider implements MarketplaceProvider {
 
   private baseUrl(testMode: boolean) {
     return testMode
-      ? 'https://api-sandbox.tgoapps.com'
-      : 'https://api.tgoapps.com'
+      ? 'https://stageapi.tgoapis.com/integrator'
+      : 'https://api.tgoapis.com/integrator'
+  }
+
+  private authHeader(supplierId: string, apiSecretKey: string) {
+    const encoded = Buffer.from(`${supplierId}:${apiSecretKey}`).toString('base64')
+    return `Basic ${encoded}`
+  }
+
+  private headers(config: MarketplaceCredentials) {
+    const base64 = Buffer.from(`${config.supplierId}:${config.apiSecretKey}`).toString('base64')
+    return {
+      Authorization: `Basic ${base64}`,
+      'api-key': config.apiKey,
+      'User-Agent': `${config.supplierId} - SelfIntegration`,
+    }
   }
 
   private async getConfig(tenantId: string): Promise<MarketplaceCredentials | null> {
@@ -33,25 +47,30 @@ export class TrendyolGoProvider implements MarketplaceProvider {
     })
   }
 
-  private async getToken(config: MarketplaceCredentials): Promise<string> {
-    const base = this.baseUrl(config.testMode === 'true')
-    const res = await axios.post(`${base}/oauth/token`, {
-      grant_type: 'client_credentials',
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-    }, { timeout: 10000 })
-    return res.data.access_token
+  private async testAuth(config: MarketplaceCredentials): Promise<boolean> {
+    try {
+      const base = this.baseUrl(config.testMode === 'true')
+      await axios.get(`${base}/product/grocery/suppliers/${config.supplierId}/stores/${config.storeId}/products?page=0&size=1`, {
+        headers: this.headers(config),
+        timeout: 10000,
+      })
+      return true
+    } catch {
+      return false
+    }
   }
 
   async connect(tenantId: string, creds: MarketplaceCredentials): Promise<ConnectResult> {
     try {
       const config: MarketplaceCredentials = {
-        clientId: creds.clientId,
-        clientSecret: creds.clientSecret,
+        supplierId: creds.supplierId,
+        apiKey: creds.apiKey,
+        apiSecretKey: creds.apiSecretKey,
         storeId: creds.storeId,
         testMode: creds.testMode || 'false',
       }
-      await this.getToken(config)
+      const ok = await this.testAuth(config)
+      if (!ok) return { success: false, message: 'API bilgileri hatalı, bağlantı sağlanamadı' }
       await this.saveConfig(tenantId, config)
       return { success: true, message: 'Trendyol Go bağlantısı başarılı' }
     } catch (e: any) {
@@ -70,8 +89,8 @@ export class TrendyolGoProvider implements MarketplaceProvider {
 
   async testConnection(creds: MarketplaceCredentials): Promise<TestResult> {
     try {
-      const token = await this.getToken(creds)
-      return { success: !!token, message: token ? 'Bağlantı başarılı' : 'Token alınamadı' }
+      const ok = await this.testAuth(creds)
+      return { success: ok, message: ok ? 'Bağlantı başarılı' : 'API bilgileri hatalı' }
     } catch (e: any) {
       return { success: false, message: 'API bilgileri hatalı' }
     }
@@ -86,21 +105,20 @@ export class TrendyolGoProvider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { products: [], total: 0, page }
     try {
-      const token = await this.getToken(config)
       const base = this.baseUrl(config.testMode === 'true')
-      const res = await axios.get(`${base}/api/v1/stores/${config.storeId}/products`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { page, size }, timeout: 15000,
-      })
+      const res = await axios.get(
+        `${base}/product/grocery/suppliers/${config.supplierId}/stores/${config.storeId}/products`,
+        { headers: this.headers(config), params: { page, size }, timeout: 15000 },
+      )
       const items = res.data?.data || res.data?.content || res.data || []
       const products = items.map((p: any) => ({
         barcode: p.barcode || p.sku || '',
         title: p.name || p.title || '',
         price: parseFloat(p.price) || parseFloat(p.salePrice) || 0,
         stock: p.quantity || p.stock || 0,
-        currency: p.currency || 'TRY',
+        currency: 'TRY',
         description: p.description || '',
-        images: p.images || [],
+        images: (p.images || []).map((i: any) => (typeof i === 'string' ? i : i.url)),
         category: p.categoryName || '',
         brand: p.brand || '',
         marketplaceId: String(p.id || ''),
@@ -112,7 +130,7 @@ export class TrendyolGoProvider implements MarketplaceProvider {
           create: { tenantId, platform: 'trendyolgo', barcode: pr.barcode, title: pr.title, price: pr.price, stock: pr.stock, currency: pr.currency, description: pr.description, images: pr.images, category: pr.category, brand: pr.brand, marketplaceId: pr.marketplaceId },
         })
       }
-      return { products, total: products.length, page }
+      return { products, total: items.length, page }
     } catch (e: any) {
       this.logger.error(`TrendyolGo getProducts: ${e.message}`)
       return { products: [], total: 0, page }
@@ -123,17 +141,16 @@ export class TrendyolGoProvider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { orders: [], total: 0, page }
     try {
-      const token = await this.getToken(config)
       const base = this.baseUrl(config.testMode === 'true')
       const params: any = { page, size, storeId: config.storeId }
       if (status) params.status = status
-      const res = await axios.get(`${base}/api/v1/orders`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params, timeout: 15000,
-      })
+      const res = await axios.get(
+        `${base}/order/grocery/suppliers/${config.supplierId}/packages`,
+        { headers: this.headers(config), params, timeout: 15000 },
+      )
       const items = res.data?.data || res.data?.content || res.data || []
       const orders: MarketplaceOrder[] = items.map((o: any) => ({
-        id: String(o.id || ''),
+        id: String(o.id || o.packageId || ''),
         orderNumber: o.orderNumber || o.id,
         customerName: o.customer?.name || o.customerName || '',
         customerEmail: o.customer?.email || o.customerEmail || '',
@@ -145,7 +162,7 @@ export class TrendyolGoProvider implements MarketplaceProvider {
           price: parseFloat(l.price) || parseFloat(l.unitPrice) || 0,
         })),
         totalAmount: parseFloat(o.totalPrice) || parseFloat(o.grandTotal) || 0,
-        currency: o.currency || 'TRY',
+        currency: 'TRY',
         status: o.status || 'pending',
         cargoStatus: o.deliveryStatus || '',
         cargoCompany: o.carrier || '',
@@ -157,7 +174,7 @@ export class TrendyolGoProvider implements MarketplaceProvider {
         await this.prisma.marketplaceOrder.upsert({
           where: { marketplaceOrderId: ord.id },
           update: { status: ord.status, marketplaceStatus: ord.status, cargoStatus: ord.cargoStatus, cargoTracking: ord.cargoTracking, cargoCompany: ord.cargoCompany, products: ord.products as any, totalAmount: ord.totalAmount, updatedAt: new Date() },
-          create: { tenantId, platform: 'trendyolgo', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: ord.customerName, customerContact: ord.customerEmail || ord.customerPhone, products: ord.products as any, totalAmount: ord.totalAmount, currency: ord.currency, status: 'pending', marketplaceStatus: ord.status, cargoStatus: ord.cargoStatus, cargoCompany: ord.cargoCompany, cargoTracking: ord.cargoTracking, paymentStatus: ord.paymentStatus, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
+          create: { tenantId, platform: 'trendyolgo', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: ord.customerName, customerContact: ord.customerEmail || ord.customerPhone, products: ord.products as any, totalAmount: ord.totalAmount, currency: 'TRY', status: 'pending', marketplaceStatus: ord.status, cargoStatus: ord.cargoStatus, cargoCompany: ord.cargoCompany, cargoTracking: ord.cargoTracking, paymentStatus: ord.paymentStatus, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
         })
       }
       return { orders, total: items.length, page }
@@ -172,12 +189,17 @@ export class TrendyolGoProvider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
-      const token = await this.getToken(config)
       const base = this.baseUrl(config.testMode === 'true')
-      await axios.put(`${base}/api/v1/stores/${config.storeId}/stock`, { items: updates }, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        timeout: 15000,
-      })
+      const items = updates.map(u => ({
+        barcode: u.barcode,
+        quantity: u.quantity,
+        salePrice: undefined,
+      }))
+      await axios.put(
+        `${base}/product/grocery/suppliers/${config.supplierId}/products/price-and-inventory`,
+        { items },
+        { headers: { ...this.headers(config), 'Content-Type': 'application/json' }, timeout: 15000 },
+      )
       for (const u of updates) {
         await this.prisma.marketplaceProduct.updateMany({
           where: { tenantId, platform: 'trendyolgo', barcode: u.barcode },

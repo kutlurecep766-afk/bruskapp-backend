@@ -1,24 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../prisma.service'
-import { YemeksepetiConfig, YemeksepetiTokenResponse, YemeksepetiOrder } from './yemeksepeti.types'
+import type { YemeksepetiConfig, YemeksepetiTokenResponse, YemeksepetiOrder } from './yemeksepeti.types'
+import type { MarketplaceProduct, MarketplaceOrder } from '../marketplace/marketplace.interface'
+
+const BASE_URL = 'https://yemeksepeti.partner.deliveryhero.io/v2'
 
 @Injectable()
 export class YemeksepetiService {
   private readonly logger = new Logger(YemeksepetiService.name)
 
-  private baseUrl(testMode: boolean) {
-    return testMode
-      ? 'https://api-sandbox.yemeksepeti.com'
-      : 'https://api.yemeksepeti.com'
-  }
-
   constructor(private prisma: PrismaService) {}
 
   private async getConfig(tenantId: string): Promise<YemeksepetiConfig | null> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketplaceApiKeys: true } })
-    const int = (tenant?.marketplaceApiKeys as any) || {}
-    return int.yemeksepeti || null
+    const keys = (tenant?.marketplaceApiKeys as any) || {}
+    return keys.yemeksepeti || null
   }
 
   private async saveConfig(tenantId: string, config: YemeksepetiConfig) {
@@ -31,23 +28,24 @@ export class YemeksepetiService {
   }
 
   private async getToken(config: YemeksepetiConfig): Promise<string> {
-    const testMode = config.testMode !== 'false'
-    const base = this.baseUrl(testMode)
-    const res = await axios.post<YemeksepetiTokenResponse>(`${base}/oauth/token`, {
-      grant_type: 'client_credentials',
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-    }, { timeout: 10000 })
+    const res = await axios.post<YemeksepetiTokenResponse>(`${BASE_URL}/oauth/token`,
+      new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+      }),
+      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 },
+    )
     return res.data.access_token
   }
 
-  async connect(tenantId: string, body: { clientId: string; clientSecret: string; restaurantId: string; testMode?: string }) {
+  async connect(tenantId: string, body: { clientId: string; clientSecret: string; chainId: string; vendorId: string }) {
     try {
       const config: YemeksepetiConfig = {
         clientId: body.clientId,
         clientSecret: body.clientSecret,
-        restaurantId: body.restaurantId,
-        testMode: body.testMode,
+        chainId: body.chainId,
+        vendorId: body.vendorId,
       }
       await this.getToken(config)
       await this.saveConfig(tenantId, config)
@@ -68,16 +66,16 @@ export class YemeksepetiService {
 
   async getConnectionStatus(tenantId: string) {
     const config = await this.getConfig(tenantId)
-    return { connected: !!config }
+    return { connected: !!config, chainId: config?.chainId, vendorId: config?.vendorId }
   }
 
-  async testConnection(body: { clientId: string; clientSecret: string; restaurantId: string; testMode?: string }) {
+  async testConnection(body: { clientId: string; clientSecret: string; chainId: string; vendorId: string }) {
     try {
       const token = await this.getToken({
         clientId: body.clientId,
         clientSecret: body.clientSecret,
-        restaurantId: body.restaurantId,
-        testMode: body.testMode,
+        chainId: body.chainId,
+        vendorId: body.vendorId,
       })
       return { success: !!token }
     } catch (e: any) {
@@ -86,39 +84,80 @@ export class YemeksepetiService {
     }
   }
 
+  async getProducts(tenantId: string, page = 0, size = 100) {
+    const config = await this.getConfig(tenantId)
+    if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
+    try {
+      const token = await this.getToken(config)
+      const res = await axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}/catalog`, {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { page, size },
+        timeout: 15000,
+      })
+      const items = res.data?.products || []
+      const products: MarketplaceProduct[] = items.map((p: any) => ({
+        barcode: p.barcode || p.sku || '',
+        title: p.name || '',
+        price: parseFloat(p.price) || 0,
+        stock: p.quantity || 0,
+        currency: 'TRY',
+        marketplaceId: p.sku || p.barcode || '',
+      }))
+      for (const pr of products) {
+        await this.prisma.marketplaceProduct.upsert({
+          where: { tenantId_platform_barcode: { tenantId, platform: 'yemeksepeti', barcode: pr.barcode } },
+          update: { title: pr.title, price: pr.price, stock: pr.stock, syncAt: new Date() },
+          create: { tenantId, platform: 'yemeksepeti', barcode: pr.barcode, title: pr.title, price: pr.price, stock: pr.stock, currency: pr.currency, marketplaceId: pr.marketplaceId },
+        })
+      }
+      return { success: true, products, total: res.data?.total || items.length, page }
+    } catch (e: any) {
+      this.logger.error(`Yemeksepeti getProducts failed: ${e.message}`)
+      return { success: false, message: 'Ürünler alınamadı' }
+    }
+  }
+
   async getOrders(tenantId: string, page = 0, size = 50, status?: string) {
     const config = await this.getConfig(tenantId)
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
       const token = await this.getToken(config)
-      const base = this.baseUrl(config.testMode !== 'false')
-      const params: any = { page, size, restaurantId: config.restaurantId }
+      const params: any = { page, page_size: size }
       if (status) params.status = status
-      const res = await axios.get(`${base}/api/v1/orders`, {
+      const res = await axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}`, {
         headers: { Authorization: `Bearer ${token}` },
-        params, timeout: 15000,
+        params,
+        timeout: 15000,
       })
-      return { success: true, orders: res.data }
+      const items = res.data?.orders || []
+      const orders: MarketplaceOrder[] = items.map((o: any) => ({
+        id: String(o.id || ''),
+        orderNumber: o.id || '',
+        customerName: o.customer?.name || '',
+        customerEmail: o.customer?.email || '',
+        customerPhone: o.customer?.phone || '',
+        products: (o.items || []).map((l: any) => ({
+          barcode: l.sku || '',
+          title: l.name || '',
+          quantity: l.quantity || 1,
+          price: parseFloat(l.price) || 0,
+        })),
+        totalAmount: parseFloat(o.total?.amount) || 0,
+        currency: o.total?.currency || 'TRY',
+        status: o.status || 'pending',
+        orderDate: o.created_at || o.createdAt || '',
+      }))
+      for (const ord of orders) {
+        await this.prisma.marketplaceOrder.upsert({
+          where: { marketplaceOrderId: ord.id },
+          update: { status: ord.status, marketplaceStatus: ord.status, products: ord.products as any, totalAmount: ord.totalAmount, updatedAt: new Date() },
+          create: { tenantId, platform: 'yemeksepeti', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: ord.customerName, customerContact: ord.customerEmail || ord.customerPhone, products: ord.products as any, totalAmount: ord.totalAmount, currency: ord.currency, status: 'pending', marketplaceStatus: ord.status, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
+        })
+      }
+      return { success: true, orders, total: res.data?.total || items.length, page }
     } catch (e: any) {
       this.logger.error(`Yemeksepeti getOrders failed: ${e.message}`)
       return { success: false, message: 'Siparişler alınamadı' }
-    }
-  }
-
-  async getProducts(tenantId: string) {
-    const config = await this.getConfig(tenantId)
-    if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
-    try {
-      const token = await this.getToken(config)
-      const base = this.baseUrl(config.testMode !== 'false')
-      const res = await axios.get(`${base}/api/v1/restaurants/${config.restaurantId}/products`, {
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: 15000,
-      })
-      return { success: true, products: res.data }
-    } catch (e: any) {
-      this.logger.error(`Yemeksepeti getProducts failed: ${e.message}`)
-      return { success: false, message: 'Ürünler alınamadı' }
     }
   }
 
@@ -127,11 +166,21 @@ export class YemeksepetiService {
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
       const token = await this.getToken(config)
-      const base = this.baseUrl(config.testMode !== 'false')
-      await axios.put(`${base}/api/v1/restaurants/${config.restaurantId}/stock`, updates, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        timeout: 15000,
-      })
+      const products = updates.map(u => ({
+        sku: u.barcode,
+        quantity: u.quantity,
+        active: u.quantity > 0,
+      }))
+      await axios.put(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}/catalog`,
+        { products },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 15000 },
+      )
+      for (const u of updates) {
+        await this.prisma.marketplaceProduct.updateMany({
+          where: { tenantId, platform: 'yemeksepeti', barcode: u.barcode },
+          data: { stock: u.quantity, syncAt: new Date() },
+        })
+      }
       return { success: true }
     } catch (e: any) {
       this.logger.error(`Yemeksepeti updateStock failed: ${e.message}`)
@@ -142,25 +191,17 @@ export class YemeksepetiService {
   async handleWebhook(tenantSlug: string, body: any) {
     const tenant = await this.prisma.tenant.findUnique({ where: { slug: tenantSlug }, select: { id: true, marketplaceApiKeys: true } })
     if (!tenant) return
-    const config = (tenant.marketplaceApiKeys as any)?.yemeksepeti
-    if (!config) return
-    this.logger.log(`Yemeksepeti webhook: ${body.type} - ${body.orderId}`)
+    this.logger.log(`Yemeksepeti webhook: status=${body?.status} orderId=${body?.id}`)
+    if (body?.id) {
+      try {
+        await this.getOrders(tenant.id, 0, 50)
+      } catch (e: any) {
+        this.logger.error(`Webhook sync error: ${e.message}`)
+      }
+    }
   }
 
   async registerWebhook(tenantId: string, url: string) {
-    const config = await this.getConfig(tenantId)
-    if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
-    try {
-      const token = await this.getToken(config)
-      const base = this.baseUrl(config.testMode !== 'false')
-      await axios.post(`${base}/api/v1/webhooks`, { url, events: ['order.created', 'order.updated', 'order.cancelled'] }, {
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        timeout: 15000,
-      })
-      return { success: true }
-    } catch (e: any) {
-      this.logger.error(`Yemeksepeti registerWebhook failed: ${e.message}`)
-      return { success: false, message: 'Webhook kaydedilemedi' }
-    }
+    return { success: false, message: 'Webhook kaydı Yemeksepeti Partner Portal üzerinden yapılmalıdır' }
   }
 }

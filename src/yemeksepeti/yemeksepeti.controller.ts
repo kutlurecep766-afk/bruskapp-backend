@@ -15,7 +15,7 @@ export class YemeksepetiController {
   }
 
   @Post('connect')
-  async connect(@Req() req: any, @Body() body: { clientId: string; clientSecret: string; restaurantId: string; testMode?: string }) {
+  async connect(@Req() req: any, @Body() body: { clientId: string; clientSecret: string; chainId: string; vendorId: string }) {
     const tenantId = this.extractTenant(req)
     if (!tenantId) return { success: false, message: 'Yetkilendirme hatası' }
     return this.yemeksepetiService.connect(tenantId, body)
@@ -37,8 +37,8 @@ export class YemeksepetiController {
 
   @Public()
   @Post('test')
-  async testConnection(@Body() body: { clientId: string; clientSecret: string; restaurantId: string; testMode?: string }) {
-    return this.yemeksepetiService.testConnection(body as any)
+  async testConnection(@Body() body: { clientId: string; clientSecret: string; chainId: string; vendorId: string }) {
+    return this.yemeksepetiService.testConnection(body)
   }
 
   @Get('products')

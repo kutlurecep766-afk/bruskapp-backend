@@ -12,7 +12,7 @@ export class YemeksepetiProvider implements MarketplaceProvider {
   constructor(private readonly yemeksepetiService: YemeksepetiService) {}
 
   async connect(tenantId: string, credentials: any) {
-    return this.yemeksepetiService.connect(tenantId, { clientId: credentials.apiKey, clientSecret: credentials.apiSecret, restaurantId: credentials.restaurantId })
+    return this.yemeksepetiService.connect(tenantId, { clientId: credentials.clientId, clientSecret: credentials.clientSecret, chainId: credentials.chainId, vendorId: credentials.vendorId })
   }
 
   async disconnect(tenantId: string) {
@@ -20,7 +20,7 @@ export class YemeksepetiProvider implements MarketplaceProvider {
   }
 
   async testConnection(credentials: any) {
-    return this.yemeksepetiService.testConnection({ clientId: credentials.apiKey, clientSecret: credentials.apiSecret, restaurantId: credentials.restaurantId }) as any
+    return this.yemeksepetiService.testConnection({ clientId: credentials.clientId, clientSecret: credentials.clientSecret, chainId: credentials.chainId, vendorId: credentials.vendorId }) as any
   }
 
   async getConnectionStatus(tenantId: string) {
