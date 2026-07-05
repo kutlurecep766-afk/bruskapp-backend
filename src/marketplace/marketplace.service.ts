@@ -6,6 +6,9 @@ import { N11Provider } from './providers/n11.provider'
 import { CicekSepetiProvider } from './providers/ciceksepeti.provider'
 import { PazaramaProvider } from './providers/pazarama.provider'
 import { PttAvmProvider } from './providers/pttavm.provider'
+import { TrendyolProvider } from './providers/trendyol.provider'
+import { HepsiburadaProvider } from './providers/hepsiburada.provider'
+import { YemeksepetiProvider } from './providers/yemeksepeti.provider'
 import type { MarketplaceProvider } from './marketplace.interface'
 import type { PlatformConfig } from './types'
 
@@ -22,6 +25,9 @@ export class MarketplaceService {
     private readonly cicekSepetiProvider: CicekSepetiProvider,
     private readonly pazaramaProvider: PazaramaProvider,
     private readonly pttAvmProvider: PttAvmProvider,
+    private readonly trendyolProvider: TrendyolProvider,
+    private readonly hepsiburadaProvider: HepsiburadaProvider,
+    private readonly yemeksepetiProvider: YemeksepetiProvider,
   ) {
     this.register(trendyolGoProvider)
     this.register(amazonProvider)
@@ -29,6 +35,9 @@ export class MarketplaceService {
     this.register(cicekSepetiProvider)
     this.register(pazaramaProvider)
     this.register(pttAvmProvider)
+    this.register(trendyolProvider)
+    this.register(hepsiburadaProvider)
+    this.register(yemeksepetiProvider)
   }
 
   private register(provider: MarketplaceProvider) {
@@ -48,6 +57,42 @@ export class MarketplaceService {
 
   getPlatformConfigs(): PlatformConfig[] {
     return [
+      {
+        platform: 'trendyol',
+        label: 'Trendyol',
+        color: 'orange',
+        gradient: 'from-orange-600 to-orange-500',
+        fields: [
+          { key: 'apiKey', label: 'API Anahtarı (API Key)', placeholder: 'api-key' },
+          { key: 'apiSecret', label: 'API Secret', placeholder: 'api-secret', type: 'password' },
+          { key: 'supplierId', label: 'Satıcı ID (Supplier ID)', placeholder: '123456' },
+        ],
+        description: 'Trendyol satıcı panelinden (Satıcı > Entegrasyon > API) aldığınız API anahtarı, API Secret ve Satıcı ID bilgilerini girin.',
+      },
+      {
+        platform: 'hepsiburada',
+        label: 'Hepsiburada',
+        color: 'purple',
+        gradient: 'from-purple-600 to-purple-500',
+        fields: [
+          { key: 'apiKey', label: 'API Anahtarı (API Key)', placeholder: 'api-key' },
+          { key: 'apiSecret', label: 'API Secret', placeholder: 'api-secret', type: 'password' },
+          { key: 'merchantId', label: 'Mağaza ID (Merchant ID)', placeholder: '123456' },
+        ],
+        description: 'Hepsiburada satıcı panelinden aldığınız API anahtarı, API Secret ve Mağaza (Merchant) ID bilgilerini girin.',
+      },
+      {
+        platform: 'yemeksepeti',
+        label: 'Yemeksepeti',
+        color: 'red',
+        gradient: 'from-red-600 to-red-500',
+        fields: [
+          { key: 'clientId', label: 'Client ID', placeholder: 'client-id' },
+          { key: 'clientSecret', label: 'Client Secret', placeholder: 'client-secret', type: 'password' },
+          { key: 'restaurantId', label: 'Restoran ID', placeholder: '123456' },
+        ],
+        description: 'Yemeksepeti partner portalından (integration.yemeksepeti.com) Client ID, Client Secret ve Restoran ID bilgilerini girin.',
+      },
       {
         platform: 'trendyolgo',
         label: 'Trendyol Go',

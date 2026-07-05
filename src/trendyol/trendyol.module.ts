@@ -8,7 +8,6 @@ import { OrdersModule } from '../orders/orders.module'
 
 @Module({
   imports: [HttpModule, PrismaModule, MessagesModule, OrdersModule],
-  controllers: [TrendyolController],
   providers: [TrendyolService],
   exports: [TrendyolService],
 })

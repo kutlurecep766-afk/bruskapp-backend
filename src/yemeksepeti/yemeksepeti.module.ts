@@ -6,7 +6,6 @@ import { PrismaModule } from '../prisma.module'
 
 @Module({
   imports: [HttpModule, PrismaModule],
-  controllers: [YemeksepetiController],
   providers: [YemeksepetiService],
   exports: [YemeksepetiService],
 })

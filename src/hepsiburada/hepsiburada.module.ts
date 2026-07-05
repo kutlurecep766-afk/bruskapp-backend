@@ -8,7 +8,6 @@ import { OrdersModule } from '../orders/orders.module'
 
 @Module({
   imports: [HttpModule, PrismaModule, MessagesModule, OrdersModule],
-  controllers: [HepsiburadaController],
   providers: [HepsiburadaService],
   exports: [HepsiburadaService],
 })

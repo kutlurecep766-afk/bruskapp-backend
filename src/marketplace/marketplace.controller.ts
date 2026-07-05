@@ -4,7 +4,7 @@ import { Public } from '../auth/public.decorator'
 import { MarketplaceService } from './marketplace.service'
 
 @SkipThrottle()
-@Controller('marketplace2')
+@Controller('marketplace')
 export class MarketplaceController {
   private readonly logger = new Logger(MarketplaceController.name)
 
