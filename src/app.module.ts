@@ -25,6 +25,7 @@ import { PaymentsModule } from './payments/payments.module'
 import { PrinterModule } from './printer/printer.module'
 import { EInvoiceModule } from './einvoice/einvoice.module'
 import { YemeksepetiModule } from './yemeksepeti/yemeksepeti.module'
+import { MarketplaceModule } from './marketplace/marketplace.module'
 
 @Global()
 @Module({
@@ -38,6 +39,7 @@ import { YemeksepetiModule } from './yemeksepeti/yemeksepeti.module'
     KargomucuzModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,
     YemeksepetiModule,
+    MarketplaceModule,
   ],
   controllers: [AppController],
   providers: [

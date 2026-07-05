@@ -1,0 +1,199 @@
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
+import { PrismaService } from '../prisma.service'
+import { TrendyolGoProvider } from './providers/trendyolgo.provider'
+import { AmazonProvider } from './providers/amazon.provider'
+import { N11Provider } from './providers/n11.provider'
+import { CicekSepetiProvider } from './providers/ciceksepeti.provider'
+import { PazaramaProvider } from './providers/pazarama.provider'
+import { PttAvmProvider } from './providers/pttavm.provider'
+import type { MarketplaceProvider } from './marketplace.interface'
+import type { PlatformConfig } from './types'
+
+@Injectable()
+export class MarketplaceService {
+  private readonly logger = new Logger(MarketplaceService.name)
+  private readonly providers = new Map<string, MarketplaceProvider>()
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly trendyolGoProvider: TrendyolGoProvider,
+    private readonly amazonProvider: AmazonProvider,
+    private readonly n11Provider: N11Provider,
+    private readonly cicekSepetiProvider: CicekSepetiProvider,
+    private readonly pazaramaProvider: PazaramaProvider,
+    private readonly pttAvmProvider: PttAvmProvider,
+  ) {
+    this.register(trendyolGoProvider)
+    this.register(amazonProvider)
+    this.register(n11Provider)
+    this.register(cicekSepetiProvider)
+    this.register(pazaramaProvider)
+    this.register(pttAvmProvider)
+  }
+
+  private register(provider: MarketplaceProvider) {
+    this.providers.set(provider.platform, provider)
+    this.logger.log(`Provider registered: ${provider.platform} (${provider.label})`)
+  }
+
+  getProvider(platform: string): MarketplaceProvider {
+    const provider = this.providers.get(platform)
+    if (!provider) throw new NotFoundException(`Pazaryeri bulunamadi: ${platform}`)
+    return provider
+  }
+
+  getProviders(): MarketplaceProvider[] {
+    return Array.from(this.providers.values())
+  }
+
+  getPlatformConfigs(): PlatformConfig[] {
+    return [
+      {
+        platform: 'trendyolgo',
+        label: 'Trendyol Go',
+        color: 'emerald',
+        gradient: 'from-emerald-600 to-emerald-500',
+        fields: [
+          { key: 'clientId', label: 'Client ID', placeholder: 'client-id' },
+          { key: 'clientSecret', label: 'Client Secret', placeholder: 'client-secret', type: 'password' },
+          { key: 'storeId', label: 'Mağaza ID (Store ID)', placeholder: '123456' },
+        ],
+        description: 'Trendyol Go partner portalından (developers.tgoapps.com) Client ID, Client Secret ve Mağaza ID bilgilerini girin.',
+      },
+      {
+        platform: 'amazon',
+        label: 'Amazon Turkey',
+        color: 'amber',
+        gradient: 'from-amber-600 to-amber-500',
+        fields: [
+          { key: 'clientId', label: 'Client ID', placeholder: 'amzn1.application-oa2-...' },
+          { key: 'clientSecret', label: 'Client Secret', placeholder: 'amzn1.oa2-cs-...', type: 'password' },
+          { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Atzr|...', type: 'password' },
+          { key: 'sellerId', label: 'Satıcı ID (Seller ID)', placeholder: 'A123456789X' },
+        ],
+        description: 'Amazon Seller Central > Appstore > Geliştirici hesabınızdan SP-API OAuth bilgilerini girin.',
+      },
+      {
+        platform: 'n11',
+        label: 'n11',
+        color: 'purple',
+        gradient: 'from-purple-600 to-purple-500',
+        fields: [
+          { key: 'apiKey', label: 'API Key (AppKey)', placeholder: 'app-key' },
+          { key: 'apiSecret', label: 'API Secret (AppSecret)', placeholder: 'app-secret', type: 'password' },
+        ],
+        description: 'n11 satıcı panelinden (so.n11.com) API Key ve API Secret bilgilerini girin.',
+      },
+      {
+        platform: 'ciceksepeti',
+        label: 'ÇiçekSepeti',
+        color: 'pink',
+        gradient: 'from-pink-600 to-pink-500',
+        fields: [
+          { key: 'apiKey', label: 'API Key', placeholder: 'api-key' },
+          { key: 'apiSecret', label: 'API Secret', placeholder: 'api-secret', type: 'password' },
+          { key: 'sellerId', label: 'Satıcı ID', placeholder: '123456' },
+        ],
+        description: 'ÇiçekSepeti satıcı panelinden (bayi.ciceksepeti.com) API bilgilerini girin.',
+      },
+      {
+        platform: 'pazarama',
+        label: 'Pazarama',
+        color: 'blue',
+        gradient: 'from-blue-600 to-blue-500',
+        fields: [
+          { key: 'clientId', label: 'Client ID (API Key)', placeholder: 'client-id' },
+          { key: 'clientSecret', label: 'Client Secret (API Şifre)', placeholder: 'client-secret', type: 'password' },
+        ],
+        description: 'Pazarama satıcı panelinden (isortagim.pazarama.com) Client ID ve Client Secret bilgilerini girin.',
+      },
+      {
+        platform: 'pttavm',
+        label: 'PTTAVM',
+        color: 'yellow',
+        gradient: 'from-yellow-600 to-yellow-500',
+        fields: [
+          { key: 'username', label: 'Kullanıcı Adı', placeholder: 'kullanici-adi' },
+          { key: 'password', label: 'API Şifre', placeholder: 'sifre', type: 'password' },
+          { key: 'shopId', label: 'Mağaza ID (Shop ID)', placeholder: '123456' },
+        ],
+        description: 'PTTAVM satıcı panelinden (tedarikci.pttavm.com) API bilgilerini girin.',
+      },
+    ]
+  }
+
+  async connect(platform: string, tenantId: string, credentials: any) {
+    const provider = this.getProvider(platform)
+    return provider.connect(tenantId, credentials)
+  }
+
+  async disconnect(platform: string, tenantId: string) {
+    const provider = this.getProvider(platform)
+    return provider.disconnect(tenantId)
+  }
+
+  async testConnection(platform: string, credentials: any) {
+    const provider = this.getProvider(platform)
+    return provider.testConnection(credentials)
+  }
+
+  async getConnectionStatus(platform: string, tenantId: string) {
+    const provider = this.getProvider(platform)
+    return provider.getConnectionStatus(tenantId)
+  }
+
+  async getProducts(platform: string, tenantId: string, page = 0, size = 100) {
+    const provider = this.getProvider(platform)
+    return provider.getProducts(tenantId, page, size)
+  }
+
+  async getOrders(platform: string, tenantId: string, page = 0, size = 50, status?: string) {
+    const provider = this.getProvider(platform)
+    return provider.getOrders(tenantId, page, size, status)
+  }
+
+  async updateStock(platform: string, tenantId: string, updates: { barcode: string; quantity: number }[]) {
+    const provider = this.getProvider(platform)
+    return provider.updateStock(tenantId, updates)
+  }
+
+  async getMessages(platform: string, tenantId: string) {
+    const provider = this.getProvider(platform)
+    if (!provider.getMessages) return []
+    return provider.getMessages(tenantId)
+  }
+
+  async replyMessage(platform: string, tenantId: string, messageId: string, text: string) {
+    const provider = this.getProvider(platform)
+    if (!provider.replyMessage) throw new BadRequestException('Bu pazaryeri mesaj yanıtlamayı desteklemiyor')
+    return provider.replyMessage(tenantId, messageId, text)
+  }
+
+  async registerWebhook(platform: string, tenantId: string, url: string) {
+    const provider = this.getProvider(platform)
+    if (!provider.registerWebhook) {
+      return { success: false, message: 'Bu pazaryeri webhook kaydını desteklemiyor' }
+    }
+    return provider.registerWebhook(tenantId, url)
+  }
+
+  async handleWebhook(platform: string, tenantSlug: string, body: any) {
+    const provider = this.getProvider(platform)
+    if (provider.handleWebhook) {
+      await provider.handleWebhook(tenantSlug, body)
+    }
+  }
+
+  async getCachedOrders(platform: string, tenantId: string, page = 0, size = 50) {
+    const [orders, total] = await Promise.all([
+      this.prisma.marketplaceOrder.findMany({
+        where: { tenantId, platform },
+        orderBy: { createdAt: 'desc' },
+        skip: page * size,
+        take: size,
+      }),
+      this.prisma.marketplaceOrder.count({ where: { tenantId, platform } }),
+    ])
+    return { orders, total }
+  }
+}
