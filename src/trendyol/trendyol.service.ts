@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { lastValueFrom } from 'rxjs'
 import { PrismaService } from '../prisma.service'
 import { OrdersService } from '../orders/orders.service'
+import { httpRetry } from '../marketplace/retry-handler'
 import type { TrendyolCredentials, TrendyolProduct, TrendyolOrder, TrendyolMessage, StockUpdate } from './trendyol.types'
 
 @Injectable()
@@ -73,12 +73,10 @@ export class TrendyolService {
   async testConnection(creds: TrendyolCredentials): Promise<{ success: boolean; message: string }> {
     try {
       const encoded = Buffer.from(creds.apiKey + ':' + creds.apiSecret).toString('base64')
-      const res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/product/sellers/' + creds.supplierId + '/products/approved', {
-          headers: { Authorization: 'Basic ' + encoded, 'User-Agent': creds.supplierId + ' - SelfIntegration' },
-          params: { page: 0, size: 1 },
-        })
-      )
+      const res = await httpRetry(() => this.http.get(this.baseUrl + '/product/sellers/' + creds.supplierId + '/products/approved', {
+        headers: { Authorization: 'Basic ' + encoded, 'User-Agent': creds.supplierId + ' - SelfIntegration' },
+        params: { page: 0, size: 1 },
+      }))
       const count = res.data?.totalElements || 0
       return { success: true, message: count + ' urun bulundu' }
     } catch (e: any) {
@@ -91,12 +89,10 @@ export class TrendyolService {
     const creds = await this.getCredentials(tenantId)
     let res
     try {
-      res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/product/sellers/' + creds.supplierId + '/products/approved', {
-          headers: this.getAuthHeaders(creds),
-          params: { page, size },
-        })
-      )
+      res = await httpRetry(() => this.http.get(this.baseUrl + '/product/sellers/' + creds.supplierId + '/products/approved', {
+        headers: this.getAuthHeaders(creds),
+        params: { page, size },
+      }))
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.message || e?.response?.data?.message || e.message
       this.logger.error('Trendyol urunler alinamadi:', errMsg)
@@ -134,13 +130,11 @@ export class TrendyolService {
     const creds = await this.getCredentials(tenantId)
     const items = updates.map(u => ({ barcode: u.barcode, quantity: u.quantity, salePrice: u.salePrice || undefined, listPrice: u.listPrice || undefined }))
     try {
-      await lastValueFrom(
-        this.http.post(
-          this.baseUrl + '/inventory/sellers/' + creds.supplierId + '/products/price-and-inventory',
-          { items },
-          { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
-        )
-      )
+      await httpRetry(() => this.http.post(
+        this.baseUrl + '/inventory/sellers/' + creds.supplierId + '/products/price-and-inventory',
+        { items },
+        { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
+      ))
       for (const u of updates) {
         await this.prisma.marketplaceProduct.updateMany({
           where: { tenantId, platform: 'trendyol', barcode: u.barcode },
@@ -161,12 +155,10 @@ export class TrendyolService {
 
     let res
     try {
-      res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/order/sellers/' + creds.supplierId + '/orders', {
-          headers: this.getAuthHeaders(creds),
-          params,
-        })
-      )
+      res = await httpRetry(() => this.http.get(this.baseUrl + '/order/sellers/' + creds.supplierId + '/orders', {
+        headers: this.getAuthHeaders(creds),
+        params,
+      }))
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.message || e?.response?.data?.message || e.message
       this.logger.error('Trendyol siparisler alinamadi:', errMsg)
@@ -250,11 +242,9 @@ export class TrendyolService {
   async getMessages(tenantId: string): Promise<TrendyolMessage[]> {
     const creds = await this.getCredentials(tenantId)
     try {
-      const res = await lastValueFrom(
-        this.http.get(this.baseUrl + '/qna/sellers/' + creds.supplierId + '/questions/filter', {
-          headers: this.getAuthHeaders(creds),
-        })
-      )
+      const res = await httpRetry(() => this.http.get(this.baseUrl + '/qna/sellers/' + creds.supplierId + '/questions/filter', {
+        headers: this.getAuthHeaders(creds),
+      }))
       return (res.data?.content || res.data || []).map((m: any) => ({
         id: String(m.id || m.questionId || ''),
         from: m.senderName || m.senderId || m.customerName || '',
@@ -272,13 +262,11 @@ export class TrendyolService {
   async replyMessage(tenantId: string, messageId: string, text: string): Promise<{ success: boolean; message: string }> {
     const creds = await this.getCredentials(tenantId)
     try {
-      await lastValueFrom(
-        this.http.post(
-          this.baseUrl + '/qna/sellers/' + creds.supplierId + '/questions/' + messageId + '/answer',
-          { answer: text },
-          { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
-        )
-      )
+      await httpRetry(() => this.http.post(
+        this.baseUrl + '/qna/sellers/' + creds.supplierId + '/questions/' + messageId + '/answer',
+        { answer: text },
+        { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
+      ))
       return { success: true, message: 'Mesaj gonderildi' }
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.message || e?.response?.data?.message || e.message
@@ -289,13 +277,11 @@ export class TrendyolService {
   async registerWebhook(tenantId: string, webhookUrl: string): Promise<{ success: boolean; message: string }> {
     const creds = await this.getCredentials(tenantId)
     try {
-      await lastValueFrom(
-        this.http.post(
-          this.baseUrl + '/webhook/sellers/' + creds.supplierId + '/webhooks',
-          { url: webhookUrl, authenticationType: 'API_KEY', apiKey: creds.apiKey, subscribedStatuses: ['CREATED', 'PICKING', 'INVOICED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'] },
-          { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
-        )
-      )
+      await httpRetry(() => this.http.post(
+        this.baseUrl + '/webhook/sellers/' + creds.supplierId + '/webhooks',
+        { url: webhookUrl, authenticationType: 'API_KEY', apiKey: creds.apiKey, subscribedStatuses: ['CREATED', 'PICKING', 'INVOICED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'] },
+        { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
+      ))
       return { success: true, message: 'Webhook basariyla kaydedildi' }
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.message || e?.response?.data?.message || e.message

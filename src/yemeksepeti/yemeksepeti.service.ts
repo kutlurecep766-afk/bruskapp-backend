@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../prisma.service'
+import { retryWithBackoff } from '../marketplace/retry-handler'
 import type { YemeksepetiConfig, YemeksepetiTokenResponse, YemeksepetiOrder } from './yemeksepeti.types'
 import type { MarketplaceProduct, MarketplaceOrder } from '../marketplace/marketplace.interface'
 
@@ -33,14 +34,14 @@ export class YemeksepetiService {
     const cached = this.tokenCache.get(cacheKey)
     if (cached && Date.now() < cached.expiresAt) return cached.token
 
-    const res = await axios.post<YemeksepetiTokenResponse>(`${BASE_URL}/oauth/token`,
+    const res = await retryWithBackoff(() => axios.post<YemeksepetiTokenResponse>(`${BASE_URL}/oauth/token`,
       new URLSearchParams({
         grant_type: 'client_credentials',
         client_id: config.clientId,
         client_secret: config.clientSecret,
       }),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 },
-    )
+    ))
     const expiresAt = Date.now() + (res.data.expires_in || 3600) * 1000
     this.tokenCache.set(cacheKey, { token: res.data.access_token, expiresAt })
     return res.data.access_token
@@ -96,11 +97,11 @@ export class YemeksepetiService {
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
       const token = await this.getToken(config)
-      const res = await axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}/catalog`, {
+      const res = await retryWithBackoff(() => axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}/catalog`, {
         headers: { Authorization: `Bearer ${token}` },
         params: { page: page + 1, page_size: size },
         timeout: 15000,
-      })
+      }))
       const items = res.data?.products || []
       const products: MarketplaceProduct[] = items.map((p: any) => ({
         barcode: p.barcode || p.sku || '',
@@ -133,11 +134,11 @@ export class YemeksepetiService {
       const endTime = new Date().toISOString()
       const params: any = { page: page + 1, page_size: size, start_time: startTime, end_time: endTime }
       if (status) params.status = status
-      const res = await axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}`, {
+      const res = await retryWithBackoff(() => axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}`, {
         headers: { Authorization: `Bearer ${token}` },
         params,
         timeout: 15000,
-      })
+      }))
       const items = res.data?.orders || []
       const orders: MarketplaceOrder[] = items.map((o: any) => ({
         id: String(o.id || ''),
@@ -180,10 +181,10 @@ export class YemeksepetiService {
         quantity: u.quantity,
         active: u.quantity > 0,
       }))
-      await axios.put(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}/catalog`,
+      await retryWithBackoff(() => axios.put(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}/catalog`,
         { products },
         { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 15000 },
-      )
+      ))
       for (const u of updates) {
         await this.prisma.marketplaceProduct.updateMany({
           where: { tenantId, platform: 'yemeksepeti', barcode: u.barcode },

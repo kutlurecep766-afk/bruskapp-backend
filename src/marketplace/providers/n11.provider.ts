@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../../prisma.service'
+import { retryWithBackoff } from '../retry-handler'
 import type { MarketplaceProvider, MarketplaceCredentials, ConnectResult, TestResult, StatusResult, ProductsResult, OrdersResult, MarketplaceOrder, StockUpdate, MarketplaceMessage } from '../marketplace.interface'
 
 @Injectable()
@@ -64,10 +65,10 @@ export class N11Provider implements MarketplaceProvider {
   private async soapCall(servicePath: string, action: string, bodyXml: string): Promise<any> {
     const responseAction = `${action}Response`
     const envelope = this.buildSoapEnvelope(action, bodyXml)
-    const res = await axios.post(`${this.baseUrl}/${servicePath}`, envelope, {
+    const res = await retryWithBackoff(() => axios.post(`${this.baseUrl}/${servicePath}`, envelope, {
       headers: { 'Content-Type': 'text/xml;charset=UTF-8', SOAPAction: '' },
       timeout: 15000,
-    })
+    }))
     const match = res.data.match(new RegExp(`<[^:]*:${responseAction}[^>]*>(.*?)</[^:]*:${responseAction}>`, 's'))
     if (!match) throw new Error('SOAP yanıtı ayrıştırılamadı')
     return this.xmlToObj(match[1])

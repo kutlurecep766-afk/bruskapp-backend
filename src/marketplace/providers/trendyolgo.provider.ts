@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../../prisma.service'
+import { retryWithBackoff } from '../retry-handler'
 import type { MarketplaceProvider, MarketplaceCredentials, ConnectResult, TestResult, StatusResult, ProductsResult, OrdersResult, MarketplaceOrder, StockUpdate, MarketplaceMessage } from '../marketplace.interface'
 
 @Injectable()
@@ -50,10 +51,10 @@ export class TrendyolGoProvider implements MarketplaceProvider {
   private async testAuth(config: MarketplaceCredentials): Promise<boolean> {
     try {
       const base = this.baseUrl(config.testMode === 'true')
-      await axios.get(`${base}/product/grocery/suppliers/${config.supplierId}/stores/${config.storeId}/products?page=0&size=1`, {
+      await retryWithBackoff(() => axios.get(`${base}/product/grocery/suppliers/${config.supplierId}/stores/${config.storeId}/products?page=0&size=1`, {
         headers: this.headers(config),
         timeout: 10000,
-      })
+      }))
       return true
     } catch {
       return false
@@ -106,10 +107,10 @@ export class TrendyolGoProvider implements MarketplaceProvider {
     if (!config) return { products: [], total: 0, page }
     try {
       const base = this.baseUrl(config.testMode === 'true')
-      const res = await axios.get(
+      const res = await retryWithBackoff(() => axios.get(
         `${base}/product/grocery/suppliers/${config.supplierId}/stores/${config.storeId}/products`,
         { headers: this.headers(config), params: { page, size }, timeout: 15000 },
-      )
+      ))
       const items = res.data?.data || res.data?.content || res.data || []
       const products = items.map((p: any) => ({
         barcode: p.barcode || p.sku || '',
@@ -144,10 +145,10 @@ export class TrendyolGoProvider implements MarketplaceProvider {
       const base = this.baseUrl(config.testMode === 'true')
       const params: any = { page, size, storeId: config.storeId }
       if (status) params.status = status
-      const res = await axios.get(
+      const res = await retryWithBackoff(() => axios.get(
         `${base}/order/grocery/suppliers/${config.supplierId}/packages`,
         { headers: this.headers(config), params, timeout: 15000 },
-      )
+      ))
       const items = res.data?.data || res.data?.content || res.data || []
       const orders: MarketplaceOrder[] = items.map((o: any) => ({
         id: String(o.id || o.packageId || ''),
@@ -195,11 +196,11 @@ export class TrendyolGoProvider implements MarketplaceProvider {
         quantity: u.quantity,
         salePrice: undefined,
       }))
-      await axios.put(
+      await retryWithBackoff(() => axios.put(
         `${base}/product/grocery/suppliers/${config.supplierId}/products/price-and-inventory`,
         { items },
         { headers: { ...this.headers(config), 'Content-Type': 'application/json' }, timeout: 15000 },
-      )
+      ))
       for (const u of updates) {
         await this.prisma.marketplaceProduct.updateMany({
           where: { tenantId, platform: 'trendyolgo', barcode: u.barcode },

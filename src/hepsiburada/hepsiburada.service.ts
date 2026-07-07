@@ -1,8 +1,8 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, HttpException, HttpStatus } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
-import { lastValueFrom } from 'rxjs'
 import { PrismaService } from '../prisma.service'
 import { OrdersService } from '../orders/orders.service'
+import { httpRetry } from '../marketplace/retry-handler'
 import type { HepsiburadaCredentials, HepsiburadaProduct, HepsiburadaOrder, StockUpdate } from './hepsiburada.types'
 
 @Injectable()
@@ -110,12 +110,10 @@ export class HepsiburadaService implements OnModuleInit {
   async testConnection(creds: HepsiburadaCredentials): Promise<{ success: boolean; message: string }> {
     try {
       const encoded = Buffer.from(creds.apiKey + ':' + creds.apiSecret).toString('base64')
-      await lastValueFrom(
-        this.http.get(this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId, {
-          headers: { Authorization: 'Basic ' + encoded, 'User-Agent': 'BruskApp/1.0' },
-          params: { offset: 0, limit: 1 },
-        })
-      )
+      await httpRetry(() => this.http.get(this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId, {
+        headers: { Authorization: 'Basic ' + encoded, 'User-Agent': 'BruskApp/1.0' },
+        params: { offset: 0, limit: 1 },
+      }))
       return { success: true, message: 'Baglanti basarili' }
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.errors?.[0] || e?.response?.data?.message || e.message
@@ -128,12 +126,10 @@ export class HepsiburadaService implements OnModuleInit {
     const offset = page * size
     let res
     try {
-      res = await lastValueFrom(
-        this.http.get(this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId, {
-          headers: this.getAuthHeaders(creds),
-          params: { offset, limit: size },
-        })
-      )
+      res = await httpRetry(() => this.http.get(this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId, {
+        headers: this.getAuthHeaders(creds),
+        params: { offset, limit: size },
+      }))
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.errors?.[0] || e?.response?.data?.message || e.message
       this.logger.error('HB urunler alinamadi:', errMsg)
@@ -171,13 +167,11 @@ export class HepsiburadaService implements OnModuleInit {
     const creds = await this.getCredentials(tenantId)
     const items = updates.map(u => ({ merchantSku: u.barcode, availableStock: u.quantity }))
     try {
-      const res = await lastValueFrom(
-        this.http.post(
-          this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId + '/stock-uploads',
-          items,
-          { headers: this.getAuthHeaders(creds) },
-        )
-      )
+      const res = await httpRetry(() => this.http.post(
+        this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId + '/stock-uploads',
+        items,
+        { headers: this.getAuthHeaders(creds) },
+      ))
       const trackingId = res.data?.id || ''
       for (const u of updates) {
         await this.prisma.marketplaceProduct.updateMany({
@@ -198,11 +192,9 @@ export class HepsiburadaService implements OnModuleInit {
   async checkBulkStockStatus(tenantId: string, trackingId: string): Promise<{ success: boolean; status: string; details?: any }> {
     const creds = await this.getCredentials(tenantId)
     try {
-      const res = await lastValueFrom(
-        this.http.get(this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId + '/stock-uploads/id/' + trackingId, {
-          headers: this.getAuthHeaders(creds),
-        })
-      )
+      const res = await httpRetry(() => this.http.get(this.listingBaseUrl + '/listings/merchantid/' + creds.merchantId + '/stock-uploads/id/' + trackingId, {
+        headers: this.getAuthHeaders(creds),
+      }))
       return { success: true, status: res.data?.status || 'unknown', details: res.data }
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.errors?.[0] || e?.response?.data?.message || e.message
@@ -217,12 +209,10 @@ export class HepsiburadaService implements OnModuleInit {
 
     let res
     try {
-      res = await lastValueFrom(
-        this.http.get(this.omsBaseUrl + '/orders/merchantId/' + creds.merchantId, {
-          headers: this.getAuthHeaders(creds),
-          params,
-        })
-      )
+      res = await httpRetry(() => this.http.get(this.omsBaseUrl + '/orders/merchantId/' + creds.merchantId, {
+        headers: this.getAuthHeaders(creds),
+        params,
+      }))
     } catch (e: any) {
       const errMsg = e?.response?.data?.errors?.[0]?.errors?.[0] || e?.response?.data?.message || e.message
       this.logger.error('HB siparisler alinamadi:', errMsg)
