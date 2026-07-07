@@ -16,20 +16,37 @@ export class MarketplaceQueueWorker extends WorkerHost {
     super()
   }
 
-  async process(job: Job): Promise<any> {
-    switch (job.name) {
-      case 'hbs-poll-all':
-        return this.handleHepsiburadaPollAll()
-      case 'sync-orders': {
-        const { platform, tenantId } = job.data as { platform: string; tenantId: string }
-        return this.handleSyncOrders(platform, tenantId)
+  async process(job: Job<any, any, string>): Promise<any> {
+    try {
+      switch (job.name) {
+        case 'hbs-poll-all':
+          return await this.handleHepsiburadaPollAll()
+        case 'sync-orders': {
+          const { platform, tenantId } = job.data as { platform: string; tenantId: string }
+          return await this.handleSyncOrders(platform, tenantId)
+        }
+        case 'sync-products': {
+          const { platform, tenantId } = job.data as { platform: string; tenantId: string }
+          return await this.handleSyncProducts(platform, tenantId)
+        }
+        default:
+          this.logger.warn(`Bilinmeyen job tipi: ${job.name}`)
       }
-      case 'sync-products': {
-        const { platform, tenantId } = job.data as { platform: string; tenantId: string }
-        return this.handleSyncProducts(platform, tenantId)
+    } catch (e: any) {
+      const status = e?.response?.status || e?.status || e?.statusCode
+      const tenantInfo = (job.data as any)?.tenantId || 'unknown'
+      const platformInfo = (job.data as any)?.platform || 'unknown'
+
+      if (status === 429) {
+        this.logger.warn(`[429 Rate Limit] ${platformInfo} tenant=${tenantInfo} job=${job.name} — backoff devrede`)
+        throw e
       }
-      default:
-        this.logger.warn(`Unknown job type: ${job.name}`)
+
+      if (status >= 500 || e instanceof Error) {
+        this.logger.error(`Job hatasi: ${job.name} tenant=${tenantInfo} platform=${platformInfo}: ${e.message}`)
+      }
+
+      throw e
     }
   }
 
@@ -43,6 +60,11 @@ export class MarketplaceQueueWorker extends WorkerHost {
         await this.marketplaceService.getOrders('hepsiburada', tenant.id, 0, 50)
         polled++
       } catch (e: any) {
+        const status = e?.response?.status || e?.status
+        if (status === 429) {
+          this.logger.warn(`Hepsiburada poll 429 (${tenant.slug}) — tenant atlaniyor`)
+          continue
+        }
         this.logger.warn(`Hepsiburada poll error (${tenant.slug}): ${e.message}`)
       }
     }

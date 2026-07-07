@@ -30,10 +30,18 @@ export class MarketplaceQueueService implements OnModuleInit {
   }
 
   async addSyncOrders(platform: string, tenantId: string) {
-    await this.syncQueue.add('sync-orders', { platform, tenantId })
+    await this.syncQueue.add('sync-orders', { platform, tenantId }, {
+      jobId: `orders:${tenantId}:${platform}`,
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 3000 },
+    })
   }
 
   async addSyncProducts(platform: string, tenantId: string) {
-    await this.syncQueue.add('sync-products', { platform, tenantId })
+    await this.syncQueue.add('sync-products', { platform, tenantId }, {
+      jobId: `products:${tenantId}:${platform}`,
+      attempts: 5,
+      backoff: { type: 'exponential', delay: 5000 },
+    })
   }
 }

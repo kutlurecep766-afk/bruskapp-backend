@@ -24,8 +24,8 @@ import { OrdersModule } from '../orders/orders.module'
     BullModule.registerQueue({
       name: 'marketplace-sync',
       defaultJobOptions: {
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 1000 },
+        attempts: 5,
+        backoff: { type: 'exponential', delay: 3000 },
         removeOnComplete: { age: 3600 },
         removeOnFail: { age: 86400 },
       },
