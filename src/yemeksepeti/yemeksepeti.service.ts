@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../prisma.service'
 import { retryWithBackoff } from '../marketplace/retry-handler'
+import { toCommonOrder, saveCommonOrder } from '../marketplace/adapters'
 import type { YemeksepetiConfig, YemeksepetiTokenResponse, YemeksepetiOrder } from './yemeksepeti.types'
 import type { MarketplaceProduct, MarketplaceOrder } from '../marketplace/marketplace.interface'
 
@@ -157,12 +158,8 @@ export class YemeksepetiService {
         status: o.status || 'RECEIVED',
         orderDate: o.sys?.created_at || o.created_at || o.createdAt || '',
       }))
-      for (const ord of orders) {
-        await this.prisma.marketplaceOrder.upsert({
-          where: { marketplaceOrderId: ord.id },
-          update: { status: ord.status, marketplaceStatus: ord.status, products: ord.products as any, totalAmount: ord.totalAmount, updatedAt: new Date() },
-          create: { tenantId, platform: 'yemeksepeti', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: ord.customerName, customerContact: ord.customerEmail || ord.customerPhone, products: ord.products as any, totalAmount: ord.totalAmount, currency: ord.currency, status: 'pending', marketplaceStatus: ord.status, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
-        })
+      for (const raw of items) {
+        await saveCommonOrder(this.prisma, toCommonOrder('yemeksepeti', raw, tenantId))
       }
       return { success: true, orders, total: res.data?.total || items.length, page }
     } catch (e: any) {

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../../prisma.service'
 import { retryWithBackoff } from '../retry-handler'
+import { toCommonOrder, saveCommonOrder } from '../adapters'
 import type { MarketplaceProvider, MarketplaceCredentials, ConnectResult, TestResult, StatusResult, ProductsResult, OrdersResult, MarketplaceOrder, StockUpdate, MarketplaceMessage } from '../marketplace.interface'
 
 @Injectable()
@@ -171,12 +172,8 @@ export class TrendyolGoProvider implements MarketplaceProvider {
         paymentStatus: o.paymentStatus || '',
         orderDate: o.createdAt || o.orderDate || '',
       }))
-      for (const ord of orders) {
-        await this.prisma.marketplaceOrder.upsert({
-          where: { marketplaceOrderId: ord.id },
-          update: { status: ord.status, marketplaceStatus: ord.status, cargoStatus: ord.cargoStatus, cargoTracking: ord.cargoTracking, cargoCompany: ord.cargoCompany, products: ord.products as any, totalAmount: ord.totalAmount, updatedAt: new Date() },
-          create: { tenantId, platform: 'trendyolgo', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: ord.customerName, customerContact: ord.customerEmail || ord.customerPhone, products: ord.products as any, totalAmount: ord.totalAmount, currency: 'TRY', status: 'pending', marketplaceStatus: ord.status, cargoStatus: ord.cargoStatus, cargoCompany: ord.cargoCompany, cargoTracking: ord.cargoTracking, paymentStatus: ord.paymentStatus, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
-        })
+      for (const raw of items) {
+        await saveCommonOrder(this.prisma, toCommonOrder('trendyolgo', raw, tenantId))
       }
       return { orders, total: items.length, page }
     } catch (e: any) {

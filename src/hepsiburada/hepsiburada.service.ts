@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios'
 import { PrismaService } from '../prisma.service'
 import { OrdersService } from '../orders/orders.service'
 import { httpRetry } from '../marketplace/retry-handler'
+import { toCommonOrder, saveCommonOrder } from '../marketplace/adapters'
 import type { HepsiburadaCredentials, HepsiburadaProduct, HepsiburadaOrder, StockUpdate } from './hepsiburada.types'
 
 @Injectable()
@@ -208,38 +209,8 @@ export class HepsiburadaService {
       orderDate: o.orderDate || o.createdAt || o.createDate || '',
     }))
 
-    for (const o of orders) {
-      await this.prisma.marketplaceOrder.upsert({
-        where: { marketplaceOrderId: o.id },
-        update: {
-          status: o.status,
-          marketplaceStatus: o.status,
-          cargoStatus: o.cargoStatus,
-          cargoTracking: o.cargoTracking,
-          cargoCompany: o.cargoCompany,
-          products: o.products,
-          totalAmount: o.totalAmount,
-          updatedAt: new Date(),
-        },
-        create: {
-          tenantId,
-          platform: 'hepsiburada',
-          marketplaceOrderId: o.id,
-          orderNumber: o.orderNumber,
-          customerName: o.customerName,
-          customerContact: o.customerEmail || o.customerPhone,
-          products: o.products,
-          totalAmount: o.totalAmount,
-          currency: o.currency,
-          status: 'pending',
-          marketplaceStatus: o.status,
-          cargoStatus: o.cargoStatus,
-          cargoCompany: o.cargoCompany,
-          cargoTracking: o.cargoTracking,
-          paymentStatus: o.paymentStatus,
-          orderDate: o.orderDate ? new Date(o.orderDate) : null,
-        },
-      })
+    for (const raw of items) {
+      await saveCommonOrder(this.prisma, toCommonOrder('hepsiburada', raw, tenantId))
     }
 
     return { orders, total, page }

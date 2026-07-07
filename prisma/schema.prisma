@@ -210,20 +210,46 @@ model MarketplaceOrder {
   marketplaceOrderId  String   @unique
   orderNumber         String?
   customerName        String
-  customerContact     String?
-  products            Json     @default("[]")
+  customerPhone       String?
+  customerEmail       String?
+  customerContact     String?  @ignore
+  deliveryAddress     Json?
+  products            Json     @ignore
   totalAmount         Float
+  discountPrice       Float    @default(0)
+  shippingPrice       Float    @default(0)
   currency            String   @default("TRY")
+  paymentType         String?
   status              String   @default("pending")
   marketplaceStatus   String?
   cargoStatus         String?
   cargoCompany        String?
   cargoTracking       String?
   paymentStatus       String?
+  isPickedUp          Boolean  @default(false)
   note                String?
+  rawPayload          Json?
   orderDate           DateTime?
+  platformCreatedAt   DateTime?
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+  items               MarketplaceOrderItem[]
 
   @@index([tenantId, platform, createdAt])
+}
+
+model MarketplaceOrderItem {
+  id              Int      @id @default(autoincrement())
+  orderId         Int
+  order           MarketplaceOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  platformItemId  String?
+  sku             String?
+  barcode         String?
+  title           String
+  quantity        Int
+  price           Float
+  options         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([orderId])
 }

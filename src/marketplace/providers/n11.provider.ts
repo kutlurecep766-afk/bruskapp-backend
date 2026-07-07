@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../../prisma.service'
 import { retryWithBackoff } from '../retry-handler'
+import { toCommonOrder, saveCommonOrder } from '../adapters'
 import type { MarketplaceProvider, MarketplaceCredentials, ConnectResult, TestResult, StatusResult, ProductsResult, OrdersResult, MarketplaceOrder, StockUpdate, MarketplaceMessage } from '../marketplace.interface'
 
 @Injectable()
@@ -176,12 +177,8 @@ export class N11Provider implements MarketplaceProvider {
         paymentStatus: String(o.paymentType || ''),
         orderDate: o.createDate || '',
       }))
-      for (const ord of orders) {
-        await this.prisma.marketplaceOrder.upsert({
-          where: { marketplaceOrderId: ord.id },
-          update: { status: ord.status, marketplaceStatus: ord.status, totalAmount: ord.totalAmount, updatedAt: new Date() },
-          create: { tenantId, platform: 'n11', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: '', customerContact: '', products: [], totalAmount: ord.totalAmount, currency: ord.currency, status: 'pending', marketplaceStatus: ord.status, paymentStatus: ord.paymentStatus, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
-        })
+      for (const raw of orderArr) {
+        await saveCommonOrder(this.prisma, toCommonOrder('n11', raw, tenantId))
       }
       return { orders, total: orders.length, page }
     } catch (e: any) {
