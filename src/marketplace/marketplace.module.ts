@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common'
 import { HttpModule } from '@nestjs/axios'
 import { BullModule } from '@nestjs/bullmq'
+import { BullBoardModule } from '@bull-board/nestjs'
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter'
 import { MarketplaceController } from './marketplace.controller'
 import { MarketplaceService } from './marketplace.service'
 import { MarketplaceQueueService } from './marketplace-queue.service'
@@ -27,6 +29,10 @@ import { OrdersModule } from '../orders/orders.module'
         removeOnComplete: { age: 3600 },
         removeOnFail: { age: 86400 },
       },
+    }),
+    BullBoardModule.forFeature({
+      name: 'marketplace-sync',
+      adapter: BullMQAdapter,
     }),
   ],
   controllers: [MarketplaceController],
