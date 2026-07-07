@@ -1,14 +1,10 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
-import { TrendyolGoProvider } from './providers/trendyolgo.provider'
-import { AmazonProvider } from './providers/amazon.provider'
 import { N11Provider } from './providers/n11.provider'
-import { CicekSepetiProvider } from './providers/ciceksepeti.provider'
-import { PazaramaProvider } from './providers/pazarama.provider'
-import { PttAvmProvider } from './providers/pttavm.provider'
 import { TrendyolProvider } from './providers/trendyol.provider'
 import { HepsiburadaProvider } from './providers/hepsiburada.provider'
 import { YemeksepetiProvider } from './providers/yemeksepeti.provider'
+import { TrendyolGoProvider } from './providers/trendyolgo.provider'
 import type { MarketplaceProvider } from './marketplace.interface'
 import type { PlatformConfig } from './types'
 
@@ -19,25 +15,17 @@ export class MarketplaceService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly trendyolGoProvider: TrendyolGoProvider,
-    private readonly amazonProvider: AmazonProvider,
     private readonly n11Provider: N11Provider,
-    private readonly cicekSepetiProvider: CicekSepetiProvider,
-    private readonly pazaramaProvider: PazaramaProvider,
-    private readonly pttAvmProvider: PttAvmProvider,
     private readonly trendyolProvider: TrendyolProvider,
     private readonly hepsiburadaProvider: HepsiburadaProvider,
     private readonly yemeksepetiProvider: YemeksepetiProvider,
+    private readonly trendyolGoProvider: TrendyolGoProvider,
   ) {
-    this.register(trendyolGoProvider)
-    this.register(amazonProvider)
     this.register(n11Provider)
-    this.register(cicekSepetiProvider)
-    this.register(pazaramaProvider)
-    this.register(pttAvmProvider)
     this.register(trendyolProvider)
     this.register(hepsiburadaProvider)
     this.register(yemeksepetiProvider)
+    this.register(trendyolGoProvider)
   }
 
   private register(provider: MarketplaceProvider) {
@@ -108,19 +96,6 @@ export class MarketplaceService {
         description: 'Trendyol Go satıcı panelinden (Hesap Bilgilerim > Entegrasyon Bilgileri) Supplier ID, API Key, API Secret Key ve Mağaza ID bilgilerini girin.',
       },
       {
-        platform: 'amazon',
-        label: 'Amazon Turkey',
-        color: 'amber',
-        gradient: 'from-amber-600 to-amber-500',
-        fields: [
-          { key: 'clientId', label: 'Client ID', placeholder: 'amzn1.application-oa2-...' },
-          { key: 'clientSecret', label: 'Client Secret', placeholder: 'amzn1.oa2-cs-...', type: 'password' },
-          { key: 'refreshToken', label: 'Refresh Token', placeholder: 'Atzr|...', type: 'password' },
-          { key: 'sellerId', label: 'Satıcı ID (Seller ID)', placeholder: 'A123456789X' },
-        ],
-        description: 'Amazon Seller Central > Appstore > Geliştirici hesabınızdan SP-API OAuth bilgilerini girin.',
-      },
-      {
         platform: 'n11',
         label: 'n11',
         color: 'purple',
@@ -130,41 +105,6 @@ export class MarketplaceService {
           { key: 'apiSecret', label: 'API Secret (AppSecret)', placeholder: 'app-secret', type: 'password' },
         ],
         description: 'n11 satıcı panelinden (so.n11.com) API Key ve API Secret bilgilerini girin.',
-      },
-      {
-        platform: 'ciceksepeti',
-        label: 'ÇiçekSepeti',
-        color: 'pink',
-        gradient: 'from-pink-600 to-pink-500',
-        fields: [
-          { key: 'apiKey', label: 'API Key', placeholder: 'api-key' },
-          { key: 'apiSecret', label: 'API Secret', placeholder: 'api-secret', type: 'password' },
-          { key: 'sellerId', label: 'Satıcı ID', placeholder: '123456' },
-        ],
-        description: 'ÇiçekSepeti satıcı panelinden (bayi.ciceksepeti.com) API bilgilerini girin.',
-      },
-      {
-        platform: 'pazarama',
-        label: 'Pazarama',
-        color: 'blue',
-        gradient: 'from-blue-600 to-blue-500',
-        fields: [
-          { key: 'clientId', label: 'Client ID (API Key)', placeholder: 'client-id' },
-          { key: 'clientSecret', label: 'Client Secret (API Şifre)', placeholder: 'client-secret', type: 'password' },
-        ],
-        description: 'Pazarama satıcı panelinden (isortagim.pazarama.com) Client ID ve Client Secret bilgilerini girin.',
-      },
-      {
-        platform: 'pttavm',
-        label: 'PTTAVM',
-        color: 'yellow',
-        gradient: 'from-yellow-600 to-yellow-500',
-        fields: [
-          { key: 'username', label: 'Kullanıcı Adı', placeholder: 'kullanici-adi' },
-          { key: 'password', label: 'API Şifre', placeholder: 'sifre', type: 'password' },
-          { key: 'shopId', label: 'Mağaza ID (Shop ID)', placeholder: '123456' },
-        ],
-        description: 'PTTAVM satıcı panelinden (tedarikci.pttavm.com) API bilgilerini girin.',
       },
     ]
   }
