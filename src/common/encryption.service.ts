@@ -4,7 +4,7 @@ import * as crypto from 'crypto'
 const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 12
 const KEY_HEX_LENGTH = 64
-const SENSITIVE_FIELDS = ['apiKey', 'apiSecret', 'apiSecretKey', 'password', 'token']
+const SENSITIVE_FIELDS = ['apiKey', 'apiSecret', 'apiSecretKey', 'clientSecret', 'password', 'token']
 
 @Injectable()
 export class EncryptionService {
