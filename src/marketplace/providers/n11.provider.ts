@@ -29,9 +29,9 @@ export class N11Provider implements MarketplaceProvider {
     })
   }
 
-  private buildSoapEnvelope(service: string, action: string, bodyXml: string): string {
+  private buildSoapEnvelope(action: string, bodyXml: string): string {
     return `<?xml version="1.0" encoding="utf-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sch="http://www.n11.com/ws/schema">
+<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sch="http://www.n11.com/ws/schemas">
   <soapenv:Header/>
   <soapenv:Body>
     <sch:${action}>${bodyXml}</sch:${action}>
@@ -43,22 +43,32 @@ export class N11Provider implements MarketplaceProvider {
     return `<auth><appKey>${config.apiKey}</appKey><appSecret>${config.apiSecret}</appSecret></auth>`
   }
 
-  private async soapCall(service: string, action: string, bodyXml: string): Promise<any> {
-    const envelope = this.buildSoapEnvelope(service, action, bodyXml)
-    const res = await axios.post(`${this.baseUrl}/${service}`, envelope, {
+  private xmlToObj(xml: string): any {
+    const obj: any = {}
+    const re = /<(\w+)(?:\s[^>]*)?>(.*?)<\/\1>/gs
+    let m
+    while ((m = re.exec(xml)) !== null) {
+      const [, k, v] = m
+      const t = v.trim()
+      const val = t.startsWith('<') ? this.xmlToObj(t) : t
+      if (obj[k] !== undefined) {
+        obj[k] = Array.isArray(obj[k]) ? [...obj[k], val] : [obj[k], val]
+      } else {
+        obj[k] = val
+      }
+    }
+    return obj
+  }
+
+  private async soapCall(servicePath: string, action: string, bodyXml: string): Promise<any> {
+    const envelope = this.buildSoapEnvelope(action, bodyXml)
+    const res = await axios.post(`${this.baseUrl}/${servicePath}`, envelope, {
       headers: { 'Content-Type': 'text/xml;charset=UTF-8', SOAPAction: action },
       timeout: 15000,
     })
-    const match = res.data.match(new RegExp(`<${action}Response>(.*?)</${action}Response>`, 's'))
+    const match = res.data.match(new RegExp(`<${action}Response[^>]*>(.*?)</${action}Response>`, 's'))
     if (!match) throw new Error('SOAP yanıtı ayrıştırılamadı')
-    const xml = match[1]
-    const result: any = {}
-    const tagRegex = /<(\w+)>(.*?)<\/\1>/gs
-    let m
-    while ((m = tagRegex.exec(xml)) !== null) {
-      result[m[1]] = m[2]
-    }
-    return result
+    return this.xmlToObj(match[1])
   }
 
   async connect(tenantId: string, creds: MarketplaceCredentials): Promise<ConnectResult> {
@@ -87,7 +97,7 @@ export class N11Provider implements MarketplaceProvider {
 
   async testConnection(creds: MarketplaceCredentials): Promise<TestResult> {
     try {
-      const result = await this.soapCall('CategoryService', 'GetCategories', this.buildAuthXml(creds))
+      await this.soapCall('categoryService/', 'GetTopLevelCategories', this.buildAuthXml(creds))
       return { success: true, message: 'Bağlantı başarılı' }
     } catch (e: any) {
       return { success: false, message: `API bilgileri hatalı: ${e.message}` }
@@ -103,22 +113,29 @@ export class N11Provider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { products: [], total: 0, page }
     try {
-      const authXml = this.buildAuthXml(config)
-      const bodyXml = `${authXml}<currentPage>${page}</currentPage><pageSize>${size}</pageSize>`
-      const result = await this.soapCall('ProductService', 'GetProductList', bodyXml)
-      const rawProducts = result?.products || result?.productList || []
-      const products = (Array.isArray(rawProducts) ? rawProducts : [rawProducts]).map((p: any) => ({
-        barcode: p.barcode || p.stockCode || '',
-        title: p.title || p.name || '',
-        price: parseFloat(p.salePrice) || parseFloat(p.price) || 0,
-        stock: parseInt(p.quantity) || parseInt(p.stock) || 0,
-        currency: 'TRY',
-        description: p.description || '',
-        images: p.images ? (Array.isArray(p.images) ? p.images : [p.images]) : [],
-        category: p.categoryName || '',
-        brand: p.brandName || '',
-        marketplaceId: String(p.id || p.productId || ''),
-      }))
+      const bodyXml = `${this.buildAuthXml(config)}<pagingData><currentPage>${page}</currentPage><pageSize>${size}</pageSize></pagingData>`
+      const result = await this.soapCall('productService/', 'GetProductList', bodyXml)
+      const rawProducts = result?.products?.product
+      const productArr = rawProducts ? (Array.isArray(rawProducts) ? rawProducts : [rawProducts]) : []
+      const products = productArr.map((p: any) => {
+        const stockItems = p.stockItems?.stockItem
+        const stockArr = stockItems ? (Array.isArray(stockItems) ? stockItems : [stockItems]) : []
+        const totalStock = stockArr.reduce((s: number, si: any) => s + (parseInt(si.quantity) || 0), 0)
+        const images = p.images?.image
+        const imgArr = images ? (Array.isArray(images) ? images : [images]) : []
+        return {
+          barcode: p.productSellerCode || '',
+          title: p.title || '',
+          price: parseFloat(p.displayPrice) || parseFloat(p.price) || 0,
+          stock: totalStock,
+          currency: 'TRY',
+          description: p.description || '',
+          images: imgArr.map((i: any) => (typeof i === 'object' ? i.url || '' : i)).filter(Boolean),
+          category: typeof p.category === 'object' ? p.category.name || p.category.fullName || '' : '',
+          brand: '',
+          marketplaceId: String(p.id || ''),
+        }
+      })
       for (const pr of products) {
         await this.prisma.marketplaceProduct.upsert({
           where: { tenantId_platform_barcode: { tenantId, platform: 'n11', barcode: pr.barcode } },
@@ -126,7 +143,7 @@ export class N11Provider implements MarketplaceProvider {
           create: { tenantId, platform: 'n11', barcode: pr.barcode, title: pr.title, price: pr.price, stock: pr.stock, currency: pr.currency, description: pr.description, images: pr.images, category: pr.category, brand: pr.brand, marketplaceId: pr.marketplaceId },
         })
       }
-      return { products, total: products.length, page }
+      return { products, total: productArr.length, page }
     } catch (e: any) {
       this.logger.error(`n11 getProducts: ${e.message}`)
       return { products: [], total: 0, page }
@@ -137,37 +154,32 @@ export class N11Provider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { orders: [], total: 0, page }
     try {
-      const authXml = this.buildAuthXml(config)
-      let bodyXml = `${authXml}<currentPage>${page}</currentPage><pageSize>${size}</pageSize>`
-      if (status) bodyXml += `<status>${status}</status>`
-      const result = await this.soapCall('OrderService', 'OrderList', bodyXml)
-      const rawOrders = result?.orders || result?.orderList || []
-      const orders: MarketplaceOrder[] = (Array.isArray(rawOrders) ? rawOrders : [rawOrders]).map((o: any) => ({
-        id: String(o.id || o.orderId || ''),
-        orderNumber: o.orderNumber || o.id || '',
-        customerName: o.billingAddress?.name || o.buyerName || o.customerName || '',
-        customerEmail: o.billingAddress?.email || o.customerEmail || '',
-        customerPhone: o.billingAddress?.phone || o.billingAddress?.gsm || '',
-        products: (o.items || o.productList || []).map((l: any) => ({
-          barcode: l.barcode || l.stockCode || '',
-          title: l.productName || l.name || l.title || '',
-          quantity: parseInt(l.quantity) || 1,
-          price: parseFloat(l.price) || parseFloat(l.salePrice) || 0,
-        })),
-        totalAmount: parseFloat(o.totalAmount) || parseFloat(o.grandTotal) || 0,
+      const searchXml = status ? `<searchData><status>${status}</status></searchData>` : '<searchData/>'
+      const bodyXml = `${this.buildAuthXml(config)}${searchXml}<pagingData><currentPage>${page}</currentPage><pageSize>${size}</pageSize></pagingData>`
+      const result = await this.soapCall('orderService/', 'OrderList', bodyXml)
+      const rawOrders = result?.orderList?.order
+      const orderArr = rawOrders ? (Array.isArray(rawOrders) ? rawOrders : [rawOrders]) : []
+      const orders: MarketplaceOrder[] = orderArr.map((o: any) => ({
+        id: String(o.id || ''),
+        orderNumber: o.orderNumber || String(o.id || ''),
+        customerName: '',
+        customerEmail: '',
+        customerPhone: '',
+        products: [],
+        totalAmount: parseFloat(o.totalAmount) || 0,
         currency: 'TRY',
-        status: o.status || 'pending',
-        cargoStatus: o.cargoStatus || o.shipmentStatus || '',
-        cargoCompany: o.carrierCompany || o.cargoCompany || '',
-        cargoTracking: o.trackingNumber || o.cargoTracking || '',
-        paymentStatus: o.paymentStatus || o.paymentType || '',
-        orderDate: o.orderDate || o.createdAt || '',
+        status: String(o.status || ''),
+        cargoStatus: '',
+        cargoCompany: '',
+        cargoTracking: '',
+        paymentStatus: String(o.paymentType || ''),
+        orderDate: o.createDate || '',
       }))
       for (const ord of orders) {
         await this.prisma.marketplaceOrder.upsert({
           where: { marketplaceOrderId: ord.id },
-          update: { status: ord.status, marketplaceStatus: ord.status, cargoStatus: ord.cargoStatus, cargoTracking: ord.cargoTracking, cargoCompany: ord.cargoCompany, products: ord.products as any, totalAmount: ord.totalAmount, updatedAt: new Date() },
-          create: { tenantId, platform: 'n11', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: ord.customerName, customerContact: ord.customerEmail || ord.customerPhone, products: ord.products as any, totalAmount: ord.totalAmount, currency: ord.currency, status: 'pending', marketplaceStatus: ord.status, cargoStatus: ord.cargoStatus, cargoCompany: ord.cargoCompany, cargoTracking: ord.cargoTracking, paymentStatus: ord.paymentStatus, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
+          update: { status: ord.status, marketplaceStatus: ord.status, totalAmount: ord.totalAmount, updatedAt: new Date() },
+          create: { tenantId, platform: 'n11', marketplaceOrderId: ord.id, orderNumber: ord.orderNumber, customerName: '', customerContact: '', products: [], totalAmount: ord.totalAmount, currency: ord.currency, status: 'pending', marketplaceStatus: ord.status, paymentStatus: ord.paymentStatus, orderDate: ord.orderDate ? new Date(ord.orderDate) : null },
         })
       }
       return { orders, total: orders.length, page }
@@ -182,9 +194,9 @@ export class N11Provider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
-      const authXml = this.buildAuthXml(config)
       const stockItemsXml = updates.map(u => `<stockItem><sellerStockCode>${u.barcode}</sellerStockCode><quantity>${u.quantity}</quantity></stockItem>`).join('')
-      await this.soapCall('ProductStockService', 'UpdateStockByStockSellerCode', `${authXml}<stockItems>${stockItemsXml}</stockItems>`)
+      const result = await this.soapCall('productStockService/', 'UpdateStockByStockSellerCode', `${this.buildAuthXml(config)}<stockItems>${stockItemsXml}</stockItems>`)
+      if (result?.result?.status !== 'success') throw new Error(result?.result?.errorMessage || 'Stok güncelleme başarısız')
       for (const u of updates) {
         await this.prisma.marketplaceProduct.updateMany({
           where: { tenantId, platform: 'n11', barcode: u.barcode },
