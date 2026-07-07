@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../../prisma.service'
+import { EncryptionService } from '../../common/encryption.service'
 import { retryWithBackoff } from '../retry-handler'
 import { toCommonOrder, saveCommonOrder } from '../adapters'
 import type { MarketplaceProvider, MarketplaceCredentials, ConnectResult, TestResult, StatusResult, ProductsResult, OrdersResult, MarketplaceOrder, StockUpdate, MarketplaceMessage } from '../marketplace.interface'
@@ -12,14 +13,18 @@ export class N11Provider implements MarketplaceProvider {
   readonly color = 'purple'
   private readonly logger = new Logger(N11Provider.name)
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private encryption: EncryptionService,
+  ) {}
 
   private readonly baseUrl = 'https://api.n11.com/ws'
 
   private async getConfig(tenantId: string): Promise<MarketplaceCredentials | null> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketplaceApiKeys: true } })
     const keys = (tenant?.marketplaceApiKeys as any) || {}
-    return keys.n11 || null
+    const raw = keys.n11 || null
+    return raw ? this.encryption.decryptConfig(raw) : null
   }
 
   private async saveConfig(tenantId: string, config: MarketplaceCredentials) {
@@ -27,7 +32,7 @@ export class N11Provider implements MarketplaceProvider {
     const current = (tenant?.marketplaceApiKeys as any) || {}
     await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: { marketplaceApiKeys: { ...current, n11: config } },
+      data: { marketplaceApiKeys: { ...current, n11: this.encryption.encryptConfig(config) } },
     })
   }
 

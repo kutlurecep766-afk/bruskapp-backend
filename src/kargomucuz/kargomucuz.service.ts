@@ -1,6 +1,7 @@
 import { Injectable, HttpException, HttpStatus, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { PrismaService } from '../prisma.service'
+import { EncryptionService } from '../common/encryption.service'
 import { firstValueFrom } from 'rxjs'
 import type { KargoMucuzCredentials, KargoMucuzProvider, CreateShipmentDto } from './kargomucuz.types'
 
@@ -13,11 +14,12 @@ export class KargomucuzService {
   constructor(
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   private async getCredentials(tenantId: string): Promise<KargoMucuzCredentials> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
-    const keys = (tenant?.marketplaceApiKeys as any)?.kargomucuz
+    const keys = this.encryption.decryptConfig((tenant?.marketplaceApiKeys as any)?.kargomucuz || {})
     if (!keys?.email || !keys?.password) {
       throw new HttpException('KargoMucuz giriş bilgileri tanımlanmamış. Lütfen ayarlardan ekleyin.', HttpStatus.BAD_REQUEST)
     }
@@ -56,7 +58,7 @@ export class KargomucuzService {
   async saveCredentials(tenantId: string, dto: { email: string; password: string }): Promise<{ success: boolean; message: string }> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     const current = (tenant?.marketplaceApiKeys as any) || {}
-    current.kargomucuz = { email: dto.email, password: dto.password }
+    current.kargomucuz = this.encryption.encryptConfig({ email: dto.email, password: dto.password })
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: { marketplaceApiKeys: current },

@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, HttpExcepti
 import { HttpService } from '@nestjs/axios'
 import { PrismaService } from '../prisma.service'
 import { OrdersService } from '../orders/orders.service'
+import { EncryptionService } from '../common/encryption.service'
 import { httpRetry } from '../marketplace/retry-handler'
 import { toCommonOrder, saveCommonOrder } from '../marketplace/adapters'
 import type { HepsiburadaCredentials, HepsiburadaProduct, HepsiburadaOrder, StockUpdate } from './hepsiburada.types'
@@ -16,12 +17,13 @@ export class HepsiburadaService {
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
     private readonly ordersService: OrdersService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   private async getCredentials(tenantId: string): Promise<HepsiburadaCredentials> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     if (!tenant) throw new NotFoundException('Tenant bulunamadi')
-    const keys = (tenant.marketplaceApiKeys as any)?.hepsiburada
+    const keys = this.encryption.decryptConfig((tenant.marketplaceApiKeys as any)?.hepsiburada || {})
     if (!keys?.apiKey || !keys?.apiSecret || !keys?.merchantId) {
       throw new BadRequestException('Hepsiburada API bilgileri eksik')
     }
@@ -44,7 +46,7 @@ export class HepsiburadaService {
     const test = await this.testConnection(creds)
     if (!test.success) return test
     const current = await this.getRawKeys(tenantId)
-    current.hepsiburada = creds
+    current.hepsiburada = this.encryption.encryptConfig(creds)
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: { marketplaceApiKeys: current },

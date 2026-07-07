@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../../prisma.service'
+import { EncryptionService } from '../../common/encryption.service'
 import { retryWithBackoff } from '../retry-handler'
 import { toCommonOrder, saveCommonOrder } from '../adapters'
 import type { MarketplaceProvider, MarketplaceCredentials, ConnectResult, TestResult, StatusResult, ProductsResult, OrdersResult, MarketplaceOrder, StockUpdate, MarketplaceMessage } from '../marketplace.interface'
@@ -12,7 +13,10 @@ export class TrendyolGoProvider implements MarketplaceProvider {
   readonly color = 'emerald'
   private readonly logger = new Logger(TrendyolGoProvider.name)
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private encryption: EncryptionService,
+  ) {}
 
   private baseUrl(testMode: boolean) {
     return testMode
@@ -37,7 +41,8 @@ export class TrendyolGoProvider implements MarketplaceProvider {
   private async getConfig(tenantId: string): Promise<MarketplaceCredentials | null> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketplaceApiKeys: true } })
     const keys = (tenant?.marketplaceApiKeys as any) || {}
-    return keys.trendyolgo || null
+    const raw = keys.trendyolgo || null
+    return raw ? this.encryption.decryptConfig(raw) : null
   }
 
   private async saveConfig(tenantId: string, config: MarketplaceCredentials) {
@@ -45,7 +50,7 @@ export class TrendyolGoProvider implements MarketplaceProvider {
     const current = (tenant?.marketplaceApiKeys as any) || {}
     await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: { marketplaceApiKeys: { ...current, trendyolgo: config } },
+      data: { marketplaceApiKeys: { ...current, trendyolgo: this.encryption.encryptConfig(config) } },
     })
   }
 

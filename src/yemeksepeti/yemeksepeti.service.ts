@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import axios from 'axios'
 import { PrismaService } from '../prisma.service'
+import { EncryptionService } from '../common/encryption.service'
 import { retryWithBackoff } from '../marketplace/retry-handler'
 import { toCommonOrder, saveCommonOrder } from '../marketplace/adapters'
 import type { YemeksepetiConfig, YemeksepetiTokenResponse, YemeksepetiOrder } from './yemeksepeti.types'
@@ -13,12 +14,16 @@ export class YemeksepetiService {
   private readonly logger = new Logger(YemeksepetiService.name)
   private readonly tokenCache = new Map<string, { token: string; expiresAt: number }>()
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private encryption: EncryptionService,
+  ) {}
 
   private async getConfig(tenantId: string): Promise<YemeksepetiConfig | null> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketplaceApiKeys: true } })
     const keys = (tenant?.marketplaceApiKeys as any) || {}
-    return keys.yemeksepeti || null
+    const raw = keys.yemeksepeti || null
+    return raw ? this.encryption.decryptConfig(raw) as YemeksepetiConfig : null
   }
 
   private async saveConfig(tenantId: string, config: YemeksepetiConfig) {
@@ -26,7 +31,7 @@ export class YemeksepetiService {
     const current = (tenant?.marketplaceApiKeys as any) || {}
     await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: { marketplaceApiKeys: { ...current, yemeksepeti: config } },
+      data: { marketplaceApiKeys: { ...current, yemeksepeti: this.encryption.encryptConfig(config) } },
     })
   }
 

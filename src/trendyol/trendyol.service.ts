@@ -2,6 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, HttpExcepti
 import { HttpService } from '@nestjs/axios'
 import { PrismaService } from '../prisma.service'
 import { OrdersService } from '../orders/orders.service'
+import { EncryptionService } from '../common/encryption.service'
 import { httpRetry } from '../marketplace/retry-handler'
 import { toCommonOrder, saveCommonOrder } from '../marketplace/adapters'
 import type { TrendyolCredentials, TrendyolProduct, TrendyolOrder, TrendyolMessage, StockUpdate } from './trendyol.types'
@@ -15,12 +16,13 @@ export class TrendyolService {
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
     private readonly ordersService: OrdersService,
+    private readonly encryption: EncryptionService,
   ) {}
 
   private async getCredentials(tenantId: string): Promise<TrendyolCredentials> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     if (!tenant) throw new NotFoundException('Tenant bulunamadi')
-    const keys = (tenant.marketplaceApiKeys as any)?.trendyol
+    const keys = this.encryption.decryptConfig((tenant.marketplaceApiKeys as any)?.trendyol || {})
     if (!keys?.apiKey || !keys?.apiSecret || !keys?.supplierId) {
       throw new BadRequestException('Trendyol API bilgileri eksik')
     }
@@ -42,7 +44,7 @@ export class TrendyolService {
     const test = await this.testConnection(creds)
     if (!test.success) return test
     const current = await this.getRawKeys(tenantId)
-    current.trendyol = creds
+    current.trendyol = this.encryption.encryptConfig(creds)
     await this.prisma.tenant.update({
       where: { id: tenantId },
       data: { marketplaceApiKeys: current },
