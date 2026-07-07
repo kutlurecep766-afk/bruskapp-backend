@@ -2,7 +2,6 @@ import { Injectable, Logger, NotFoundException, BadRequestException, HttpExcepti
 import { HttpService } from '@nestjs/axios'
 import { PrismaService } from '../prisma.service'
 import { OrdersService } from '../orders/orders.service'
-import { MarketplaceQueueService } from '../marketplace/marketplace-queue.service'
 import { httpRetry } from '../marketplace/retry-handler'
 import type { HepsiburadaCredentials, HepsiburadaProduct, HepsiburadaOrder, StockUpdate } from './hepsiburada.types'
 
@@ -16,10 +15,7 @@ export class HepsiburadaService {
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
     private readonly ordersService: OrdersService,
-    private readonly queueService: MarketplaceQueueService,
-  ) {
-    this.queueService.addHepsiburadaPollAll()
-  }
+  ) {}
 
   private async getCredentials(tenantId: string): Promise<HepsiburadaCredentials> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
