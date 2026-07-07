@@ -12,7 +12,7 @@ export class CicekSepetiProvider implements MarketplaceProvider {
 
   constructor(private prisma: PrismaService) {}
 
-  private readonly baseUrl = 'https://api.ciceksepeti.com'
+  private readonly baseUrl = 'https://apis.ciceksepeti.com/api/v1'
 
   private async getConfig(tenantId: string): Promise<MarketplaceCredentials | null> {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { marketplaceApiKeys: true } })
@@ -29,12 +29,16 @@ export class CicekSepetiProvider implements MarketplaceProvider {
     })
   }
 
+  private buildHeaders(config: MarketplaceCredentials) {
+    return { 'x-api-key': config.apiKey, 'x-api-secret': config.apiSecret }
+  }
+
   async connect(tenantId: string, creds: MarketplaceCredentials): Promise<ConnectResult> {
     try {
       if (!creds.apiKey || !creds.apiSecret) {
         return { success: false, message: 'API Key ve API Secret gerekli' }
       }
-      const config: MarketplaceCredentials = { apiKey: creds.apiKey, apiSecret: creds.apiSecret, sellerId: creds.sellerId }
+      const config: MarketplaceCredentials = { apiKey: creds.apiKey, apiSecret: creds.apiSecret }
       const test = await this.testConnection(config)
       if (!test.success) return test
       await this.saveConfig(tenantId, config)
@@ -55,11 +59,11 @@ export class CicekSepetiProvider implements MarketplaceProvider {
 
   async testConnection(creds: MarketplaceCredentials): Promise<TestResult> {
     try {
-      const res = await axios.get(`${this.baseUrl}/v1/sellers/me`, {
-        headers: { Authorization: `Bearer ${creds.apiKey}`, 'x-api-key': creds.apiKey },
+      await axios.get(`${this.baseUrl}/sellers/me`, {
+        headers: this.buildHeaders(creds),
         timeout: 10000,
       })
-      return { success: res.status === 200, message: res.status === 200 ? 'Bağlantı başarılı' : 'API bilgileri hatalı' }
+      return { success: true, message: 'Bağlantı başarılı' }
     } catch (e: any) {
       return { success: false, message: `API bilgileri hatalı: ${e.message}` }
     }
@@ -67,15 +71,15 @@ export class CicekSepetiProvider implements MarketplaceProvider {
 
   async getConnectionStatus(tenantId: string): Promise<StatusResult> {
     const config = await this.getConfig(tenantId)
-    return { connected: !!config, sellerId: config?.sellerId }
+    return { connected: !!config }
   }
 
   async getProducts(tenantId: string, page = 0, size = 100): Promise<ProductsResult> {
     const config = await this.getConfig(tenantId)
     if (!config) return { products: [], total: 0, page }
     try {
-      const res = await axios.get(`${this.baseUrl}/v1/products`, {
-        headers: { Authorization: `Bearer ${config.apiKey}`, 'x-api-key': config.apiKey },
+      const res = await axios.get(`${this.baseUrl}/products`, {
+        headers: this.buildHeaders(config),
         params: { page, size }, timeout: 15000,
       })
       const items = res.data?.data || res.data?.products || []
@@ -111,8 +115,8 @@ export class CicekSepetiProvider implements MarketplaceProvider {
     try {
       const params: any = { page, size }
       if (status) params.status = status
-      const res = await axios.get(`${this.baseUrl}/v1/orders`, {
-        headers: { Authorization: `Bearer ${config.apiKey}`, 'x-api-key': config.apiKey },
+      const res = await axios.get(`${this.baseUrl}/orders`, {
+        headers: this.buildHeaders(config),
         params, timeout: 15000,
       })
       const items = res.data?.data || res.data?.orders || []
@@ -156,8 +160,8 @@ export class CicekSepetiProvider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
-      await axios.put(`${this.baseUrl}/v1/products/stock`, { items: updates.map(u => ({ barcode: u.barcode, quantity: u.quantity })) }, {
-        headers: { Authorization: `Bearer ${config.apiKey}`, 'x-api-key': config.apiKey, 'Content-Type': 'application/json' },
+      await axios.put(`${this.baseUrl}/products/stock`, { items: updates.map(u => ({ barcode: u.barcode, quantity: u.quantity })) }, {
+        headers: { ...this.buildHeaders(config), 'Content-Type': 'application/json' },
         timeout: 15000,
       })
       for (const u of updates) {
