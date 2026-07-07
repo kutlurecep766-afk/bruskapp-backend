@@ -183,8 +183,8 @@ export class N11Provider implements MarketplaceProvider {
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
       const authXml = this.buildAuthXml(config)
-      const itemsXml = updates.map((u, i) => `<item><barcode>${u.barcode}</barcode><quantity>${u.quantity}</quantity></item>`).join('')
-      await this.soapCall('ProductService', 'UpdateStock', `${authXml}<items>${itemsXml}</items>`)
+      const stockItemsXml = updates.map(u => `<stockItem><sellerStockCode>${u.barcode}</sellerStockCode><quantity>${u.quantity}</quantity></stockItem>`).join('')
+      await this.soapCall('ProductStockService', 'UpdateStockByStockSellerCode', `${authXml}<stockItems>${stockItemsXml}</stockItems>`)
       for (const u of updates) {
         await this.prisma.marketplaceProduct.updateMany({
           where: { tenantId, platform: 'n11', barcode: u.barcode },
