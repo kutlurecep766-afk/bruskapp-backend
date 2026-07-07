@@ -42,4 +42,8 @@ export class HepsiburadaProvider implements MarketplaceProvider {
   async handleWebhook(tenantSlug: string, body: any) {
     return this.hepsiburadaService.handleWebhook(tenantSlug, body)
   }
+
+  async checkBulkStockStatus(tenantId: string, trackingId: string) {
+    return this.hepsiburadaService.checkBulkStockStatus(tenantId, trackingId)
+  }
 }

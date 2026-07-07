@@ -52,6 +52,31 @@ NestJS + PostgreSQL backend for BruskApp (marketplace order management). 102 `Or
 - `src/marketplace/providers/n11.provider.ts`
 - `src/marketplace/providers/trendyolgo.provider.ts`
 
+## Şifreleme Mimarisi (AES-256-GCM)
+
+### Nasıl çalışır
+- `src/common/encryption.service.ts` — Node.js `crypto` ile AES-256-GCM
+- `EncryptionModule` — `@Global()` olarak `AppModule`'e import edildi
+- Tüm provider/service'ler `EncryptionService` inject eder
+- `encryptConfig(config)` — SENSITIVE_FIELDS listesindeki alanları bulur, `iv:authTag:ciphertext` formatında şifreler
+- `decryptConfig(config)` — Aynı alanları deşifre eder. Düz metin (legacy) veri varsa olduğu gibi döndürür
+- Şifreleme anahtarı: `ENCRYPTION_KEY` (64 hex char = 32 byte) → VPS `/opt/.env`
+
+### Şifrelenen alanlar
+| Platform | Şifrelenen alanlar | Düz metin kalanlar |
+|---|---|---|
+| Trendyol | `apiKey`, `apiSecret` | `supplierId` |
+| Hepsiburada | `apiKey`, `apiSecret` | `merchantId` |
+| Yemeksepeti | `clientSecret` | `clientId`, `chainId`, `vendorId` |
+| n11 | `apiKey`, `apiSecret` | — |
+| Trendyol Go | `apiKey`, `apiSecretKey` | `supplierId`, `storeId`, `testMode` |
+| KargoMucuz | `password` | `email` |
+
+### Geriye uyumluluk
+- Mevcut düz metin veriler `decrypt()` hatasız okunur (catch → olduğu gibi döndür)
+- Bir sonraki `connect()`/`saveConfig()` çağrısında otomatik şifrelenir
+- `MarketplaceQueueWorker` sadece key varlığını kontrol eder, değer okumaz → değişiklik gerekmez
+
 ## Regression Test Results (KNOWN FAILING)
 - `orders` (400) — pre-existing, not from our changes
 - `auth` (404) — pre-existing, not from our changes

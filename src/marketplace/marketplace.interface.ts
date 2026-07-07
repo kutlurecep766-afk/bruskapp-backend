@@ -97,4 +97,5 @@ export interface MarketplaceProvider {
   registerWebhook?(tenantId: string, url: string): Promise<ConnectResult>
   handleWebhook?(tenantSlug: string, body: any): Promise<void>
   syncOrders?(tenantId: string): Promise<void>
+  checkBulkStockStatus?(tenantId: string, trackingId: string): Promise<{ success: boolean; status: string; details?: any }>
 }

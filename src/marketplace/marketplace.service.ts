@@ -183,4 +183,12 @@ export class MarketplaceService {
     ])
     return { orders, total }
   }
+
+  async checkBulkStockStatus(platform: string, tenantId: string, trackingId: string) {
+    const provider = this.getProvider(platform)
+    if (!provider.checkBulkStockStatus) {
+      throw new BadRequestException('Bu pazaryeri toplu stok takibini desteklemiyor')
+    }
+    return provider.checkBulkStockStatus(tenantId, trackingId)
+  }
 }

@@ -127,4 +127,11 @@ export class MarketplaceController {
       return { success: false, message: e.message }
     }
   }
+
+  @Get(':platform/stock/:trackingId')
+  async checkBulkStockStatus(@Req() req: any, @Param('platform') platform: string, @Param('trackingId') trackingId: string) {
+    const tenantId = this.extractTenant(req)
+    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
+    return this.marketplaceService.checkBulkStockStatus(platform, tenantId, trackingId)
+  }
 }
