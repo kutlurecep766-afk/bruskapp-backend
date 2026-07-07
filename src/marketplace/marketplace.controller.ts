@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body, Query, Req, Logger } from '@nestjs/common'
+import { Controller, Post, Get, Param, Body, Query, Req, Logger, HttpException, HttpStatus } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
 import { Public } from '../auth/public.decorator'
 import { MarketplaceService } from './marketplace.service'
@@ -106,7 +106,18 @@ export class MarketplaceController {
 
   @Public()
   @Post(':platform/webhook/callback/:tenantSlug')
-  async webhookCallback(@Param('platform') platform: string, @Param('tenantSlug') tenantSlug: string, @Body() body: any) {
+  async webhookCallback(@Req() req: any, @Param('platform') platform: string, @Param('tenantSlug') tenantSlug: string, @Body() body: any) {
+    const platformSignatureHeaders: Record<string, string> = {
+      trendyol: 'x-trendyol-signature',
+      hepsiburada: 'x-hb-signature',
+      trendyolgo: 'x-getir-signature',
+      yemeksepeti: 'x-yemeksepeti-signature',
+      n11: 'x-n11-signature',
+    }
+    const signatureHeader = req.headers[platformSignatureHeaders[platform]] || req.headers['x-marketplace-signature'] || ''
+    if (!signatureHeader) {
+      this.logger.warn(`${platform} webhook: imza header'i eksik (tenant=${tenantSlug})`)
+    }
     this.logger.log(`${platform} webhook: tenant=${tenantSlug}`)
     try {
       await this.marketplaceService.handleWebhook(platform, tenantSlug, body)
