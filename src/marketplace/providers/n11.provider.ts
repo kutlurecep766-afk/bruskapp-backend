@@ -30,11 +30,12 @@ export class N11Provider implements MarketplaceProvider {
   }
 
   private buildSoapEnvelope(action: string, bodyXml: string): string {
+    const requestAction = `${action}Request`
     return `<?xml version="1.0" encoding="utf-8"?>
 <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:sch="http://www.n11.com/ws/schemas">
   <soapenv:Header/>
   <soapenv:Body>
-    <sch:${action}>${bodyXml}</sch:${action}>
+    <sch:${requestAction}>${bodyXml}</sch:${requestAction}>
   </soapenv:Body>
 </soapenv:Envelope>`
   }
@@ -61,12 +62,13 @@ export class N11Provider implements MarketplaceProvider {
   }
 
   private async soapCall(servicePath: string, action: string, bodyXml: string): Promise<any> {
+    const responseAction = `${action}Response`
     const envelope = this.buildSoapEnvelope(action, bodyXml)
     const res = await axios.post(`${this.baseUrl}/${servicePath}`, envelope, {
-      headers: { 'Content-Type': 'text/xml;charset=UTF-8', SOAPAction: action },
+      headers: { 'Content-Type': 'text/xml;charset=UTF-8', SOAPAction: '' },
       timeout: 15000,
     })
-    const match = res.data.match(new RegExp(`<${action}Response[^>]*>(.*?)</${action}Response>`, 's'))
+    const match = res.data.match(new RegExp(`<[^:]*:${responseAction}[^>]*>(.*?)</[^:]*:${responseAction}>`, 's'))
     if (!match) throw new Error('SOAP yanıtı ayrıştırılamadı')
     return this.xmlToObj(match[1])
   }
@@ -121,17 +123,15 @@ export class N11Provider implements MarketplaceProvider {
         const stockItems = p.stockItems?.stockItem
         const stockArr = stockItems ? (Array.isArray(stockItems) ? stockItems : [stockItems]) : []
         const totalStock = stockArr.reduce((s: number, si: any) => s + (parseInt(si.quantity) || 0), 0)
-        const images = p.images?.image
-        const imgArr = images ? (Array.isArray(images) ? images : [images]) : []
         return {
           barcode: p.productSellerCode || '',
           title: p.title || '',
           price: parseFloat(p.displayPrice) || parseFloat(p.price) || 0,
           stock: totalStock,
           currency: 'TRY',
-          description: p.description || '',
-          images: imgArr.map((i: any) => (typeof i === 'object' ? i.url || '' : i)).filter(Boolean),
-          category: typeof p.category === 'object' ? p.category.name || p.category.fullName || '' : '',
+          description: '',
+          images: [],
+          category: typeof p.category === 'object' ? p.category.name || '' : String(p.category || ''),
           brand: '',
           marketplaceId: String(p.id || ''),
         }
@@ -194,7 +194,8 @@ export class N11Provider implements MarketplaceProvider {
     const config = await this.getConfig(tenantId)
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
-      const stockItemsXml = updates.map(u => `<stockItem><sellerStockCode>${u.barcode}</sellerStockCode><quantity>${u.quantity}</quantity></stockItem>`).join('')
+      const version = Date.now().toString()
+      const stockItemsXml = updates.map(u => `<stockItem><sellerStockCode>${u.barcode}</sellerStockCode><quantity>${u.quantity}</quantity><version>${version}</version></stockItem>`).join('')
       const result = await this.soapCall('productStockService/', 'UpdateStockByStockSellerCode', `${this.buildAuthXml(config)}<stockItems>${stockItemsXml}</stockItems>`)
       if (result?.result?.status !== 'success') throw new Error(result?.result?.errorMessage || 'Stok güncelleme başarısız')
       for (const u of updates) {

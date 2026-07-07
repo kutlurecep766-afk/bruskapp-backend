@@ -132,7 +132,7 @@ export class TrendyolService {
   async updateStock(tenantId: string, updates: StockUpdate[]): Promise<{ success: boolean; message: string }> {
     if (!updates.length) return { success: false, message: 'Guncellenecek urun bulunamadi' }
     const creds = await this.getCredentials(tenantId)
-    const items = updates.map(u => ({ barcode: u.barcode, quantity: u.quantity }))
+    const items = updates.map(u => ({ barcode: u.barcode, quantity: u.quantity, salePrice: u.salePrice || undefined, listPrice: u.listPrice || undefined }))
     try {
       await lastValueFrom(
         this.http.post(
@@ -156,7 +156,7 @@ export class TrendyolService {
 
   async getOrders(tenantId: string, page = 0, size = 50, status?: string): Promise<{ orders: TrendyolOrder[]; total: number; page: number }> {
     const creds = await this.getCredentials(tenantId)
-    const params: any = { page, size }
+    const params: any = { page, size, startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString() }
     if (status && status !== 'all') params.status = status
 
     let res
@@ -292,7 +292,7 @@ export class TrendyolService {
       await lastValueFrom(
         this.http.post(
           this.baseUrl + '/webhook/sellers/' + creds.supplierId + '/webhooks',
-          { url: webhookUrl, webhookType: 'ORDER', webhookAddress: webhookUrl },
+          { url: webhookUrl, authenticationType: 'API_KEY', apiKey: creds.apiKey, subscribedStatuses: ['CREATED', 'PICKING', 'INVOICED', 'SHIPPED', 'DELIVERED', 'CANCELLED', 'RETURNED'] },
           { headers: { ...this.getAuthHeaders(creds), 'Content-Type': 'application/json' } },
         )
       )

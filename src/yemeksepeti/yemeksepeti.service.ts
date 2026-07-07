@@ -9,6 +9,7 @@ const BASE_URL = 'https://yemeksepeti.partner.deliveryhero.io/v2'
 @Injectable()
 export class YemeksepetiService {
   private readonly logger = new Logger(YemeksepetiService.name)
+  private readonly tokenCache = new Map<string, { token: string; expiresAt: number }>()
 
   constructor(private prisma: PrismaService) {}
 
@@ -28,6 +29,10 @@ export class YemeksepetiService {
   }
 
   private async getToken(config: YemeksepetiConfig): Promise<string> {
+    const cacheKey = config.clientId
+    const cached = this.tokenCache.get(cacheKey)
+    if (cached && Date.now() < cached.expiresAt) return cached.token
+
     const res = await axios.post<YemeksepetiTokenResponse>(`${BASE_URL}/oauth/token`,
       new URLSearchParams({
         grant_type: 'client_credentials',
@@ -36,6 +41,8 @@ export class YemeksepetiService {
       }),
       { headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, timeout: 10000 },
     )
+    const expiresAt = Date.now() + (res.data.expires_in || 3600) * 1000
+    this.tokenCache.set(cacheKey, { token: res.data.access_token, expiresAt })
     return res.data.access_token
   }
 
@@ -91,7 +98,7 @@ export class YemeksepetiService {
       const token = await this.getToken(config)
       const res = await axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}/catalog`, {
         headers: { Authorization: `Bearer ${token}` },
-        params: { page, size },
+        params: { page: page + 1, page_size: size },
         timeout: 15000,
       })
       const items = res.data?.products || []
@@ -122,7 +129,9 @@ export class YemeksepetiService {
     if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
     try {
       const token = await this.getToken(config)
-      const params: any = { page, page_size: size }
+      const startTime = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const endTime = new Date().toISOString()
+      const params: any = { page: page + 1, page_size: size, start_time: startTime, end_time: endTime }
       if (status) params.status = status
       const res = await axios.get(`${BASE_URL}/chains/${config.chainId}/vendors/${config.vendorId}`, {
         headers: { Authorization: `Bearer ${token}` },
@@ -142,10 +151,10 @@ export class YemeksepetiService {
           quantity: l.quantity || 1,
           price: parseFloat(l.price) || 0,
         })),
-        totalAmount: parseFloat(o.total?.amount) || 0,
-        currency: o.total?.currency || 'TRY',
-        status: o.status || 'pending',
-        orderDate: o.created_at || o.createdAt || '',
+        totalAmount: parseFloat(o.payment?.order_total?.amount) || parseFloat(o.total?.amount) || 0,
+        currency: o.payment?.order_total?.currency || o.total?.currency || 'TRY',
+        status: o.status || 'RECEIVED',
+        orderDate: o.sys?.created_at || o.created_at || o.createdAt || '',
       }))
       for (const ord of orders) {
         await this.prisma.marketplaceOrder.upsert({
@@ -185,6 +194,22 @@ export class YemeksepetiService {
     } catch (e: any) {
       this.logger.error(`Yemeksepeti updateStock failed: ${e.message}`)
       return { success: false, message: 'Stok güncellenemedi' }
+    }
+  }
+
+  async updateOrderStatus(tenantId: string, orderId: string, body: any) {
+    const config = await this.getConfig(tenantId)
+    if (!config) return { success: false, message: 'Bağlantı ayarları bulunamadı' }
+    try {
+      const token = await this.getToken(config)
+      await axios.put(`${BASE_URL}/chains/${config.chainId}/orders/${orderId}`,
+        body,
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 15000 },
+      )
+      return { success: true, message: 'Sipariş durumu güncellendi' }
+    } catch (e: any) {
+      this.logger.error(`Yemeksepeti updateOrderStatus: ${e.message}`)
+      return { success: false, message: 'Sipariş durumu güncellenemedi' }
     }
   }
 

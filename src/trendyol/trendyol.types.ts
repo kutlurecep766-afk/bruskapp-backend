@@ -46,4 +46,6 @@ export interface TrendyolMessage {
 export interface StockUpdate {
   barcode: string
   quantity: number
+  salePrice?: number
+  listPrice?: number
 }

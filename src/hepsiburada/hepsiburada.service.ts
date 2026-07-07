@@ -24,7 +24,7 @@ export class HepsiburadaService implements OnModuleInit {
 
   private startPolling() {
     if (this.pollingTimer) return
-    this.logger.log('HB siparis polling baslatildi (30s)')
+    this.logger.log('HB siparis polling baslatildi (5dk)')
     this.pollAllTenants()
   }
 
@@ -49,7 +49,7 @@ export class HepsiburadaService implements OnModuleInit {
     } catch (e: any) {
       this.logger.error('Polling sorgu hatasi:', e.message)
     }
-    this.pollingTimer = setTimeout(() => this.pollAllTenants(), 30000)
+    this.pollingTimer = setTimeout(() => this.pollAllTenants(), 300000)
   }
 
   private async getCredentials(tenantId: string): Promise<HepsiburadaCredentials> {
@@ -66,7 +66,7 @@ export class HepsiburadaService implements OnModuleInit {
     const encoded = Buffer.from(creds.apiKey + ':' + creds.apiSecret).toString('base64')
     return {
       Authorization: 'Basic ' + encoded,
-      'User-Agent': 'BruskApp/1.0',
+      'User-Agent': creds.merchantId + ' - BruskApp/1.0',
       'Content-Type': 'application/json',
     }
   }
@@ -143,8 +143,8 @@ export class HepsiburadaService implements OnModuleInit {
     const total = res.data?.totalCount || items.length
 
     const products: HepsiburadaProduct[] = items.map((p: any) => ({
-      barcode: p.merchantSku || p.hepsiburadaSku || '',
-      title: p.merchantSku || '',
+      barcode: p.barcode || p.merchantSku || p.hepsiburadaSku || '',
+      title: p.title || p.productName || p.merchantSku || '',
       price: parseFloat(p.price) || 0,
       stock: p.availableStock || 0,
       currency: 'TRY',
@@ -218,7 +218,7 @@ export class HepsiburadaService implements OnModuleInit {
     let res
     try {
       res = await lastValueFrom(
-        this.http.get(this.omsBaseUrl + '/claims/merchantId/' + creds.merchantId, {
+        this.http.get(this.omsBaseUrl + '/orders/merchantId/' + creds.merchantId, {
           headers: this.getAuthHeaders(creds),
           params,
         })
@@ -307,7 +307,7 @@ export class HepsiburadaService implements OnModuleInit {
     const tenant = await this.prisma.tenant.findUnique({ where: { slug: tenantSlug } })
     if (!tenant) throw new NotFoundException('Tenant bulunamadi: ' + tenantSlug)
 
-    const orderId = body?.orderId || body?.orderNumber || body?.id || body?.claimNumber || ''
+    const orderId = body?.orderId || body?.orderNumber || body?.id || ''
     if (!orderId) {
       this.logger.warn('Webhook icinde orderId yok')
       return
