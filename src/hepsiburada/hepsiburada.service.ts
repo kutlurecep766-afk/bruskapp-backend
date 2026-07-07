@@ -1,55 +1,24 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit, HttpException, HttpStatus } from '@nestjs/common'
+import { Injectable, Logger, NotFoundException, BadRequestException, HttpException, HttpStatus } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { PrismaService } from '../prisma.service'
 import { OrdersService } from '../orders/orders.service'
+import { MarketplaceQueueService } from '../marketplace/marketplace-queue.service'
 import { httpRetry } from '../marketplace/retry-handler'
 import type { HepsiburadaCredentials, HepsiburadaProduct, HepsiburadaOrder, StockUpdate } from './hepsiburada.types'
 
 @Injectable()
-export class HepsiburadaService implements OnModuleInit {
+export class HepsiburadaService {
   private readonly logger = new Logger(HepsiburadaService.name)
   private readonly listingBaseUrl = 'https://listing-external.hepsiburada.com'
   private readonly omsBaseUrl = 'https://oms-external.hepsiburada.com'
-  private pollingTimer: ReturnType<typeof setInterval> | null = null
 
   constructor(
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
     private readonly ordersService: OrdersService,
-  ) {}
-
-  onModuleInit() {
-    this.startPolling()
-  }
-
-  private startPolling() {
-    if (this.pollingTimer) return
-    this.logger.log('HB siparis polling baslatildi (5dk)')
-    this.pollAllTenants()
-  }
-
-  private async pollAllTenants() {
-    try {
-      const tenants = await this.prisma.tenant.findMany()
-      let polled = 0
-      for (const tenant of tenants) {
-        const keys = tenant.marketplaceApiKeys as any
-        if (!keys?.hepsiburada?.apiKey) continue
-        try {
-          await Promise.all([
-            this.getOrders(tenant.id, 0, 50),
-          ])
-          polled++
-        } catch (e: any) {
-          this.logger.warn('Polling hatasi (' + tenant.slug + '): ' + e.message)
-        }
-        await new Promise(r => setTimeout(r, 300))
-      }
-      if (polled > 0) this.logger.debug('Polling: ' + polled + ' tenant')
-    } catch (e: any) {
-      this.logger.error('Polling sorgu hatasi:', e.message)
-    }
-    this.pollingTimer = setTimeout(() => this.pollAllTenants(), 300000)
+    private readonly queueService: MarketplaceQueueService,
+  ) {
+    this.queueService.addHepsiburadaPollAll()
   }
 
   private async getCredentials(tenantId: string): Promise<HepsiburadaCredentials> {

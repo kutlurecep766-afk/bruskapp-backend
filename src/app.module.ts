@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common'
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler'
 import { APP_GUARD } from '@nestjs/core'
+import { BullModule } from '@nestjs/bullmq'
 import { AppController } from './app.controller'
 import { AppService } from './app.service'
 import { UsersModule } from './users/users.module'
@@ -35,6 +36,21 @@ import { MarketplaceModule } from './marketplace/marketplace.module'
       ttl: 60000,
       limit: 30,
     }]),
+    BullModule.forRootAsync({
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.get('REDIS_HOST', 'localhost'),
+          port: parseInt(config.get('REDIS_PORT', '6379')),
+        },
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 1000 },
+          removeOnComplete: { age: 3600 },
+          removeOnFail: { age: 86400 },
+        },
+      }),
+      inject: [ConfigService],
+    }),
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule,
     KargomucuzModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common'
 import { HttpModule } from '@nestjs/axios'
 import { MarketplaceController } from './marketplace.controller'
 import { MarketplaceService } from './marketplace.service'
+import { MarketplaceQueueModule } from './marketplace-queue.module'
 import { N11Provider } from './providers/n11.provider'
 import { TrendyolProvider } from './providers/trendyol.provider'
 import { HepsiburadaProvider } from './providers/hepsiburada.provider'
@@ -14,7 +15,7 @@ import { PrismaModule } from '../prisma.module'
 import { OrdersModule } from '../orders/orders.module'
 
 @Module({
-  imports: [HttpModule, PrismaModule, OrdersModule, TrendyolModule, HepsiburadaModule, YemeksepetiModule],
+  imports: [HttpModule, PrismaModule, OrdersModule, TrendyolModule, HepsiburadaModule, YemeksepetiModule, MarketplaceQueueModule],
   controllers: [MarketplaceController],
   providers: [
     MarketplaceService,
