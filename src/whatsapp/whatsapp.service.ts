@@ -64,7 +64,7 @@ export class WhatsappService {
           `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
           {
             messaging_product: 'whatsapp',
-            to: to.replace(/\+/g, ''),
+            to: to.replace(/[^0-9]/g, ''),
             type: 'text',
             text: { body: message },
           },
