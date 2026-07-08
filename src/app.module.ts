@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module'
 import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { TelegramModule } from './telegram/telegram.module'
 import { InstagramModule } from './instagram/instagram.module'
+import { PushModule } from './push/push.module'
 import { TrendyolModule } from './trendyol/trendyol.module'
 import { HepsiburadaModule } from './hepsiburada/hepsiburada.module'
 import { KargomucuzModule } from './kargomucuz/kargomucuz.module'
@@ -58,7 +59,7 @@ import { EncryptionModule } from './common/encryption.module'
       }),
       inject: [ConfigService],
     }),
-    PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule,
+    PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, PushModule,
     KargomucuzModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,
     MarketplaceModule,

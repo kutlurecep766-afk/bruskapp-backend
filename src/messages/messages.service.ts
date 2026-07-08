@@ -1,16 +1,26 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 import { Subject } from 'rxjs'
+import { PushService } from '../push/push.service'
 
 @Injectable()
 export class MessagesService {
   public newMessage$ = new Subject<any>()
 
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private pushService: PushService) {}
 
   async create(data: { platform: string; from: string; content: string; messageId?: string; tenantId: string; direction?: string }) {
     const msg = await this.prisma.message.create({ data: { ...data, direction: data.direction || 'incoming' } })
     this.newMessage$.next(msg)
+
+    // Push notification for incoming messages
+    if (data.direction !== 'outgoing' && data.platform !== 'web_site') {
+      this.pushService.notify(data.tenantId, {
+        title: data.platform.charAt(0).toUpperCase() + data.platform.slice(1),
+        body: data.from + ': ' + (data.content?.slice(0, 100) || ''),
+        icon: '/favicon.svg',
+      }).catch(() => {})
+    }
 
     // Auto-reply for web demo messages
     if (data.direction !== 'outgoing' && data.platform === 'web_site') {
