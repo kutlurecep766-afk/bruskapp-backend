@@ -30,7 +30,7 @@ export class UsersService {
     return user
   }
 
-  async create(data: { email: string; password: string; name?: string; role?: string; tenantId: string }) {
+  async create(data: { email: string; password: string; name?: string; role?: string; permissions?: string[]; tenantId: string }) {
     const existing = await this.prisma.user.findUnique({ where: { email: data.email } })
     if (existing) throw new ConflictException('Bu e-posta zaten kayitli')
     const passwordHash = await bcrypt.hash(data.password, 12)
@@ -40,7 +40,7 @@ export class UsersService {
         passwordHash,
         name: data.name || '',
         role: data.role || 'WAITER',
-        permissions: [],
+        permissions: data.permissions || [],
         tenantId: data.tenantId,
       },
       select: { id: true, email: true, name: true, role: true, status: true, createdAt: true },

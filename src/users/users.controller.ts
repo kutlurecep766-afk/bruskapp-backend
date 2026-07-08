@@ -29,16 +29,17 @@ export class UsersController {
   }
 
   @Post()
-  async create(@Req() req: any, @Body() body: { email: string; password: string; name?: string; role?: string }) {
+  async create(@Req() req: any, @Body() body: { email: string; password: string; name?: string; role?: string; permissions?: string[]; tenantId?: string }) {
     const allowedRoles = ['SUPER_ADMIN', 'TENANT_ADMIN']
     if (!allowedRoles.includes(req.user?.role)) throw new ForbiddenException('Yetkiniz yok')
-    const tenantId = req.user.role === 'SUPER_ADMIN' ? ((body as any).tenantId || req.user.tenantId) : req.user.tenantId
+    const tenantId = req.user.role === 'SUPER_ADMIN' ? (body.tenantId || req.user.tenantId) : req.user.tenantId
     if (!tenantId) throw new ForbiddenException('Tenant bilgisi gerekli')
     return this.usersService.create({
       email: body.email,
       password: body.password,
       name: body.name || '',
       role: body.role || 'WAITER',
+      permissions: body.permissions,
       tenantId,
     })
   }
