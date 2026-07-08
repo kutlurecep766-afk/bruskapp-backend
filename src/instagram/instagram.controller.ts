@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Req, ForbiddenException } from '@nestjs/common'
+import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header } from '@nestjs/common'
 import { Public } from '../auth/public.decorator'
 import { InstagramService } from './instagram.service'
 import { MessagesService } from '../messages/messages.service'
@@ -42,6 +42,7 @@ export class InstagramController {
 
   @Public()
   @Get('webhook')
+  @Header('Content-Type', 'text/plain; charset=utf-8')
   async verifyWebhook(
     @Query('hub.mode') mode: string,
     @Query('hub.verify_token') token: string,
