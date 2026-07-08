@@ -27,7 +27,9 @@ export class InstagramService {
   async saveConfig(tenantId: string, data: { accessToken: string; igBusinessAccountId: string; webhookToken: string; active?: boolean }) {
     const encrypted = {
       ...data,
+      igBusinessAccountId: data.igBusinessAccountId.trim(),
       accessToken: this.encryption.encrypt(data.accessToken),
+      webhookToken: data.webhookToken.trim(),
     }
     return this.prisma.tenantInstagramConfig.upsert({
       where: { tenantId },

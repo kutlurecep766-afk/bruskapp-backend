@@ -27,7 +27,9 @@ export class WhatsappService {
   async saveConfig(tenantId: string, data: { accessToken: string; phoneNumberId: string; webhookToken: string; active?: boolean }) {
     const encrypted = {
       ...data,
+      phoneNumberId: data.phoneNumberId.trim(),
       accessToken: this.encryption.encrypt(data.accessToken),
+      webhookToken: data.webhookToken.trim(),
     }
     return this.prisma.tenantWhatsAppConfig.upsert({
       where: { tenantId },

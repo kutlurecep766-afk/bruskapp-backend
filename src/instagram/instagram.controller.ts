@@ -35,10 +35,16 @@ export class InstagramController {
   }
 
   @Post('send')
-  async sendMessage(@Req() req: any, @Body() body: { to: string; message: string }) {
+  async sendMessage(@Req() req: any, @Body() dto: InstagramSendDto) {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
-    return this.instagramService.sendMessage(tenantId, body.to, body.message)
+    const result = await this.instagramService.sendMessage(tenantId, dto.to, dto.message)
+    if (result.success) {
+      await this.messagesService.create({
+        platform: 'instagram', from: dto.to, content: dto.message, tenantId, direction: 'outgoing',
+      }).catch(() => {})
+    }
+    return result
   }
 
   @Public()

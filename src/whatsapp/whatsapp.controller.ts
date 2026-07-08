@@ -39,7 +39,13 @@ export class WhatsappController {
   async sendMessage(@Req() req: any, @Body() dto: WhatsappSendDto) {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
-    return this.whatsappService.sendMessage(tenantId, dto.to, dto.message)
+    const result = await this.whatsappService.sendMessage(tenantId, dto.to, dto.message)
+    if (result.success) {
+      await this.messagesService.create({
+        platform: 'whatsapp', from: dto.to.replace(/[^0-9]/g, ''), content: dto.message, tenantId, direction: 'outgoing',
+      }).catch(() => {})
+    }
+    return result
   }
 
   @Public()
