@@ -16,7 +16,8 @@ export class WhatsappController {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
     const config = await this.whatsappService.getConfig(tenantId)
-    const webhookUrl = `${req.protocol}://${req.get('host')}/whatsapp/webhook`
+    const proto = req.headers['x-forwarded-proto'] || req.protocol
+    const webhookUrl = `${proto}://${req.get('host')}/api/whatsapp/webhook`
     return { config, webhookUrl }
   }
 

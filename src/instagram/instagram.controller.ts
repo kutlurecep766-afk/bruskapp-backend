@@ -15,7 +15,8 @@ export class InstagramController {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
     const config = await this.instagramService.getConfig(tenantId)
-    const webhookUrl = `${req.protocol}://${req.get('host')}/instagram/webhook`
+    const proto = req.headers['x-forwarded-proto'] || req.protocol
+    const webhookUrl = `${proto}://${req.get('host')}/api/instagram/webhook`
     return { config, webhookUrl }
   }
 
