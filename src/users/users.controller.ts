@@ -45,7 +45,7 @@ export class UsersController {
   }
 
   @Patch(':id')
-  async update(@Req() req: any, @Param('id') id: string, @Body() body: { name?: string; role?: string }) {
+  async update(@Req() req: any, @Param('id') id: string, @Body() body: { name?: string; role?: string; permissions?: string[] }) {
     const user = await this.usersService.findById(id)
     if (req.user?.role !== 'SUPER_ADMIN' && user.tenantId !== req.user?.tenantId) {
       throw new ForbiddenException('Yetkiniz yok')

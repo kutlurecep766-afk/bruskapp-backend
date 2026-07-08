@@ -47,13 +47,13 @@ export class UsersService {
     })
   }
 
-  async update(id: string, data: { name?: string; role?: string }) {
+  async update(id: string, data: { name?: string; role?: string; permissions?: string[] }) {
     const user = await this.prisma.user.findUnique({ where: { id } })
     if (!user) throw new NotFoundException('Kullanici bulunamadi')
     return this.prisma.user.update({
       where: { id },
       data,
-      select: { id: true, email: true, name: true, role: true, status: true },
+      select: { id: true, email: true, name: true, role: true, permissions: true, status: true },
     })
   }
 
