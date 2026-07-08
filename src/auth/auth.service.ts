@@ -26,7 +26,7 @@ export class AuthService {
       data: { name: 'Default', slug: 'default' },
     })
     await this.prisma.user.create({
-      data: { email, passwordHash, tenantId: tenant.id },
+      data: { email, passwordHash, tenantId: tenant.id, role: 'SUPER_ADMIN' },
     })
     return { success: true }
   }
@@ -134,7 +134,7 @@ export class AuthService {
         name: businessName,
         slug: finalSlug,
         users: {
-          create: { email, passwordHash },
+          create: { email, passwordHash, role: 'TENANT_ADMIN' },
         },
       },
     })
