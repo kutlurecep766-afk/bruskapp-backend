@@ -8,5 +8,6 @@ import { MessagesModule } from '../messages/messages.module'
   imports: [HttpModule, MessagesModule],
   controllers: [InstagramController],
   providers: [InstagramService],
+  exports: [InstagramService],
 })
 export class InstagramModule {}

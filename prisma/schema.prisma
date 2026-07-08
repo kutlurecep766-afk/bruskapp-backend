@@ -31,6 +31,8 @@ model Tenant {
   marketplaceProducts MarketplaceProduct[]
   marketplaceOrders MarketplaceOrder[]
   products Product[]
+  whatsappConfig TenantWhatsAppConfig?
+  instagramConfig TenantInstagramConfig?
 }
 
 model Product {
@@ -252,4 +254,28 @@ model MarketplaceOrderItem {
   createdAt       DateTime @default(now())
 
   @@index([orderId])
+}
+
+model TenantWhatsAppConfig {
+  id                String   @id @default(uuid())
+  tenantId          String   @unique
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accessToken       String
+  phoneNumberId     String
+  webhookToken      String
+  active            Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model TenantInstagramConfig {
+  id                  String   @id @default(uuid())
+  tenantId            String   @unique
+  tenant              Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accessToken         String
+  igBusinessAccountId String
+  webhookToken        String
+  active              Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }

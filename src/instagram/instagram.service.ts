@@ -1,61 +1,83 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { lastValueFrom } from 'rxjs'
-import { ConfigService } from '../config.service'
+import { PrismaService } from '../prisma.service'
+import { EncryptionService } from '../common/encryption.service'
 
 @Injectable()
 export class InstagramService {
   private readonly logger = new Logger(InstagramService.name)
+  private apiVersion = 'v21.0'
 
   constructor(
     private readonly http: HttpService,
-    private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
+    private readonly encryption: EncryptionService,
   ) {}
 
-  private get igUserId() { return this.config.get('INSTAGRAM_USER_ID') || '' }
-  private get accessToken() { return this.config.get('INSTAGRAM_ACCESS_TOKEN') || '' }
-  private get apiVersion() { return 'v21.0' }
-  private get isConfigured() { return !!this.igUserId && !!this.accessToken }
+  async getConfig(tenantId: string) {
+    const config = await this.prisma.tenantInstagramConfig.findUnique({ where: { tenantId } })
+    if (!config) return null
+    return {
+      ...config,
+      accessToken: this.encryption.decrypt(config.accessToken),
+    }
+  }
 
-  async testConnection(token?: string, userId?: string): Promise<{ success: boolean; message: string }> {
-    const tk = token || this.accessToken
-    const uid = userId || this.igUserId
-    if (!tk || !uid) return { success: false, message: 'Instagram API bilgileri eksik' }
+  async saveConfig(tenantId: string, data: { accessToken: string; igBusinessAccountId: string; webhookToken: string; active?: boolean }) {
+    const encrypted = {
+      ...data,
+      accessToken: this.encryption.encrypt(data.accessToken),
+    }
+    return this.prisma.tenantInstagramConfig.upsert({
+      where: { tenantId },
+      create: { tenantId, ...encrypted },
+      update: encrypted,
+    })
+  }
+
+  private async getCredentials(tenantId: string) {
+    const config = await this.getConfig(tenantId)
+    if (!config) throw new Error('Instagram yapilandirmasi bulunamadi')
+    return { accessToken: config.accessToken, igBusinessAccountId: config.igBusinessAccountId }
+  }
+
+  async testConnection(tenantId: string) {
     try {
+      const { accessToken, igBusinessAccountId } = await this.getCredentials(tenantId)
       const res = await lastValueFrom(
-        this.http.get('https://graph.facebook.com/' + this.apiVersion + '/' + uid, {
-          headers: { Authorization: 'Bearer ' + tk },
-          params: { fields: 'name,username' }
+        this.http.get(`https://graph.facebook.com/${this.apiVersion}/${igBusinessAccountId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { fields: 'name,username' },
         })
       )
-      return { success: true, message: 'Baglanti basarili: @' + (res.data?.username || res.data?.name || 'OK') }
+      return { success: true, message: `Baglanti basarili: @${res.data?.username || res.data?.name || 'OK'}` }
     } catch (e: any) {
-      return { success: false, message: 'Baglanti hatasi: ' + (e?.response?.data?.error?.message || e.message) }
+      return { success: false, message: `Baglanti hatasi: ${e?.response?.data?.error?.message || e.message}` }
     }
   }
 
-  async saveConfig(userId: string, token: string): Promise<{ success: boolean; message: string }> {
-    if (!userId || !token) return { success: false, message: 'Kullanici ID ve token gerekli' }
-    const test = await this.testConnection(token, userId)
-    if (!test.success) return test
-    this.config.set('INSTAGRAM_USER_ID', userId)
-    this.config.set('INSTAGRAM_ACCESS_TOKEN', token)
-    return { success: true, message: 'Instagram bilgileri kaydedildi' }
-  }
-
-  async sendMessage(to: string, text: string): Promise<{ success: boolean; message: string }> {
-    if (!this.isConfigured) return { success: false, message: 'Instagram API bilgileri eksik' }
+  async sendMessage(tenantId: string, to: string, text: string) {
     try {
+      const { accessToken, igBusinessAccountId } = await this.getCredentials(tenantId)
       const res = await lastValueFrom(
         this.http.post(
-          'https://graph.facebook.com/' + this.apiVersion + '/' + this.igUserId + '/messages',
+          `https://graph.facebook.com/${this.apiVersion}/${igBusinessAccountId}/messages`,
           { recipient: { id: to }, message: { text } },
-          { headers: { Authorization: 'Bearer ' + this.accessToken, 'Content-Type': 'application/json' } }
+          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
-      return { success: true, message: 'Mesaj gonderildi (ID: ' + (res.data?.message_id || 'OK') + ')' }
+      return { success: true, message: `Mesaj gonderildi (ID: ${res.data?.message_id || 'OK'})` }
     } catch (e: any) {
-      return { success: false, message: 'Gonderim hatasi: ' + (e?.response?.data?.error?.message || e.message) }
+      return { success: false, message: `Gonderim hatasi: ${e?.response?.data?.error?.message || e.message}` }
     }
+  }
+
+  async findByIgBusinessAccountId(igBusinessAccountId: string) {
+    return this.prisma.tenantInstagramConfig.findFirst({ where: { igBusinessAccountId, active: true } })
+  }
+
+  async findByWebhookToken(token: string) {
+    return this.prisma.tenantInstagramConfig.findFirst({ where: { webhookToken: token } })
   }
 }

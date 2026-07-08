@@ -1,17 +1,24 @@
-import { IsNotEmpty } from 'class-validator'
-export class WhatsappTestDto {
+import { IsNotEmpty, IsOptional, IsBoolean } from 'class-validator'
+
+export class SaveWhatsAppConfigDto {
   @IsNotEmpty()
-  phoneNumber: string
+  accessToken: string
+
   @IsNotEmpty()
-  apiKey: string
+  phoneNumberId: string
+
+  @IsNotEmpty()
+  webhookToken: string
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean
 }
+
 export class WhatsappSendDto {
   @IsNotEmpty()
-  phoneNumber: string
-  @IsNotEmpty()
-  apiKey: string
-  @IsNotEmpty()
   to: string
+
   @IsNotEmpty()
   message: string
 }
