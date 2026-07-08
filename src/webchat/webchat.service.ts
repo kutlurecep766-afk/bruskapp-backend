@@ -100,6 +100,8 @@ export class WebchatService {
     return { ...this.config }
   }
 
+
+
   updateConfig(updates: Partial<ChatBotConfig>): ChatBotConfig {
     this.config = { ...this.config, ...updates }
     this.saveConfig()
@@ -371,7 +373,11 @@ export class WebchatService {
     return clean
   }
 
-  private async generateResponse(message: string, conv: Conversation, sessionId = '', cleaned = ''): Promise<string> {
+  async generateResponse(message: string, conv?: Conversation, sessionId = '', cleaned = ''): Promise<string> {
+    if (!conv) {
+      conv = { messages: [], lastActivity: Date.now() }
+      conv.messages.push({ role: 'user', content: message })
+    }
     // Anti-timing: constant small delay to prevent timing attacks
     await new Promise(r => setTimeout(r, 30 + Math.random() * 40))
     const lower = message.toLowerCase().trim()

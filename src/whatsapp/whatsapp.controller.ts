@@ -2,6 +2,8 @@ import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header } f
 import { Public } from '../auth/public.decorator'
 import { WhatsappService } from './whatsapp.service'
 import { MessagesService } from '../messages/messages.service'
+import { WebchatService } from '../webchat/webchat.service'
+import { PrismaService } from '../prisma.service'
 import { SaveWhatsAppConfigDto, WhatsappSendDto } from './whatsapp.dto'
 
 @Controller('whatsapp')
@@ -9,6 +11,8 @@ export class WhatsappController {
   constructor(
     private readonly whatsappService: WhatsappService,
     private readonly messagesService: MessagesService,
+    private readonly webchatService: WebchatService,
+    private readonly prisma: PrismaService,
   ) {}
 
   @Get('config')
@@ -78,17 +82,47 @@ export class WhatsappController {
 
     const config = await this.whatsappService.findByPhoneNumberId(phoneNumberId)
     if (!config) return { status: 'ok' }
+    const tenantId = config.tenantId
 
     const messages = changes.messages || []
     for (const msg of messages) {
+      if (msg.direction === 'send') continue // skip echoes
+
+      const text = msg.text?.body || '(media)'
+      const from = msg.from || 'unknown'
+
       await this.messagesService.create({
-        platform: 'whatsapp',
-        from: msg.from || 'unknown',
-        content: msg.text?.body || '(media)',
-        messageId: msg.id,
-        tenantId: config.tenantId,
-        direction: 'incoming',
+        platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
+
+      // AI auto-reply
+      if (msg.text?.body) {
+        try {
+          const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
+          const features = (tenant?.features as any) || {}
+          const limit = features.messageLimit || 0
+
+          if (limit > 0) {
+            const startOfMonth = new Date()
+            startOfMonth.setDate(1)
+            startOfMonth.setHours(0, 0, 0, 0)
+            const monthCount = await this.prisma.message.count({
+              where: { tenantId, direction: 'outgoing', createdAt: { gte: startOfMonth } },
+            })
+            if (monthCount >= limit) continue // limit reached, skip AI reply
+          }
+
+          const reply = await this.webchatService.generateResponse(text)
+          if (reply) {
+            await this.whatsappService.sendMessage(tenantId, from, reply)
+            await this.messagesService.create({
+              platform: 'whatsapp', from, content: reply, tenantId, direction: 'outgoing',
+            }).catch(() => {})
+          }
+        } catch (e) {
+          console.error('WhatsApp AI reply error:', e)
+        }
+      }
     }
     return { status: 'ok' }
   }
