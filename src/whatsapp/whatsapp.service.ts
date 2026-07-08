@@ -8,12 +8,23 @@ import { EncryptionService } from '../common/encryption.service'
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name)
   private apiVersion = 'v21.0'
+  private pausedConversations = new Set<string>()
 
   constructor(
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
   ) {}
+
+  isAiPaused(tenantId: string, from: string): boolean {
+    return this.pausedConversations.has(tenantId + ':' + from)
+  }
+
+  setAiPaused(tenantId: string, from: string, paused: boolean) {
+    const key = tenantId + ':' + from
+    if (paused) this.pausedConversations.add(key)
+    else this.pausedConversations.delete(key)
+  }
 
   async getConfig(tenantId: string) {
     const config = await this.prisma.tenantWhatsAppConfig.findUnique({ where: { tenantId } })

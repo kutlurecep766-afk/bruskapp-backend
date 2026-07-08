@@ -32,6 +32,44 @@ export class WhatsappController {
     return this.whatsappService.saveConfig(tenantId, body)
   }
 
+  @Post('ai/pause')
+  async aiPause(@Req() req: any, @Body('from') from: string) {
+    const user = req.user as any
+    if (!user || !from) throw new ForbiddenException('Yetkiniz yok')
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { users: { some: { id: user.userId } } },
+      select: { id: true },
+    })
+    if (!tenant) throw new ForbiddenException('Isletme bulunamadi')
+    this.whatsappService.setAiPaused(tenant.id, from, true)
+    return { status: 'paused' }
+  }
+
+  @Post('ai/resume')
+  async aiResume(@Req() req: any, @Body('from') from: string) {
+    const user = req.user as any
+    if (!user || !from) throw new ForbiddenException('Yetkiniz yok')
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { users: { some: { id: user.userId } } },
+      select: { id: true },
+    })
+    if (!tenant) throw new ForbiddenException('Isletme bulunamadi')
+    this.whatsappService.setAiPaused(tenant.id, from, false)
+    return { status: 'resumed' }
+  }
+
+  @Get('ai/status')
+  async aiStatus(@Req() req: any, @Query('from') from: string) {
+    const user = req.user as any
+    if (!user || !from) return { paused: false }
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { users: { some: { id: user.userId } } },
+      select: { id: true },
+    })
+    if (!tenant) return { paused: false }
+    return { paused: this.whatsappService.isAiPaused(tenant.id, from) }
+  }
+
   @Post('test')
   async testConnection(@Req() req: any) {
     const tenantId = req.user?.tenantId
@@ -96,11 +134,12 @@ export class WhatsappController {
       })
 
       // AI auto-reply
-      if (msg.text?.body) {
+      if (msg.text?.body && !this.whatsappService.isAiPaused(tenantId, from)) {
         try {
-          const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
-          const features = (tenant?.features as any) || {}
-          const limit = features.messageLimit || 0
+          const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
+          const feats = (tenantData?.features as any) || {}
+          if (feats.aiAutoReply === false) continue
+          const limit = feats.messageLimit || 0
 
           if (limit > 0) {
             const startOfMonth = new Date()
@@ -109,7 +148,7 @@ export class WhatsappController {
             const monthCount = await this.prisma.message.count({
               where: { tenantId, direction: 'outgoing', createdAt: { gte: startOfMonth } },
             })
-            if (monthCount >= limit) continue // limit reached, skip AI reply
+            if (monthCount >= limit) continue
           }
 
           const reply = await this.webchatService.generateResponse(text)
