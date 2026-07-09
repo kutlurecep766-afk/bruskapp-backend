@@ -7,7 +7,8 @@ import { EncryptionService } from '../common/encryption.service'
 @Injectable()
 export class InstagramService {
   private readonly logger = new Logger(InstagramService.name)
-  private apiVersion = 'v21.0'
+  private fbApiVersion = 'v21.0'
+  private igApiVersion = 'v25.0'
   private pausedConversations = new Set<string>()
 
   constructor(
@@ -30,12 +31,11 @@ export class InstagramService {
     try {
       const { accessToken } = await this.getCredentials(tenantId)
       const res = await lastValueFrom(
-        this.http.get(`https://graph.facebook.com/${this.apiVersion}/${senderId}`, {
+        this.http.get(`https://graph.instagram.com/${this.igApiVersion}/${senderId}`, {
           headers: { Authorization: `Bearer ${accessToken}` },
-          params: { fields: 'username,name' },
         })
       )
-      return res.data?.username || res.data?.name || null
+      return res.data?.username || null
     } catch {
       return null
     }
@@ -72,14 +72,13 @@ export class InstagramService {
 
   async testConnection(tenantId: string) {
     try {
-      const { accessToken, igBusinessAccountId } = await this.getCredentials(tenantId)
+      const { accessToken } = await this.getCredentials(tenantId)
       const res = await lastValueFrom(
-        this.http.get(`https://graph.facebook.com/${this.apiVersion}/${igBusinessAccountId}`, {
+        this.http.get(`https://graph.instagram.com/${this.igApiVersion}/me`, {
           headers: { Authorization: `Bearer ${accessToken}` },
-          params: { fields: 'name,username' },
         })
       )
-      return { success: true, message: `Baglanti basarili: @${res.data?.username || res.data?.name || 'OK'}` }
+      return { success: true, message: `Baglanti basarili: @${res.data?.username || 'OK'}` }
     } catch (e: any) {
       return { success: false, message: `Baglanti hatasi: ${e?.response?.data?.error?.message || e.message}` }
     }
@@ -87,10 +86,10 @@ export class InstagramService {
 
   async sendMessage(tenantId: string, to: string, text: string) {
     try {
-      const { accessToken, igBusinessAccountId } = await this.getCredentials(tenantId)
+      const { accessToken } = await this.getCredentials(tenantId)
       const res = await lastValueFrom(
         this.http.post(
-          `https://graph.facebook.com/${this.apiVersion}/${igBusinessAccountId}/messages`,
+          `https://graph.instagram.com/${this.igApiVersion}/me/messages`,
           { recipient: { id: to }, message: { text } },
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
