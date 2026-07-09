@@ -163,31 +163,14 @@ export class WhatsappService {
       if (profile.description !== undefined && profile.description !== '') body.description = profile.description
       if (profile.email !== undefined && profile.email !== '') body.email = profile.email
       if (profile.websites !== undefined && profile.websites.length > 0) body.websites = profile.websites
-      // bos alanlari temizlemek icin ayri bir istek (sadece silinecek alanlari belirt)
-      const clearBody: any = { messaging_product: 'whatsapp' }
-      if (profile.about === '') clearBody.about = ''
-      if (profile.description === '') clearBody.description = ''
-      if (profile.email === '') clearBody.email = ''
-      if (profile.websites !== undefined && profile.websites.length === 0) clearBody.websites = []
-      const hasClear = Object.keys(clearBody).length > 1
-      if (hasClear) {
-        await lastValueFrom(
-          this.http.post(
-            `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
-            clearBody,
-            { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
-          )
+      if (Object.keys(body).length <= 1) return { success: true, message: 'Guncellenecek alan yok' }
+      const res = await lastValueFrom(
+        this.http.post(
+          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
+          body,
+          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
-      }
-      if (Object.keys(body).length > 1) {
-        await lastValueFrom(
-          this.http.post(
-            `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
-            body,
-            { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
-          )
-        )
-      }
+      )
       return { success: true, message: 'Profil guncellendi' }
     } catch (e: any) {
       return { success: false, message: `Guncelleme hatasi: ${e?.response?.data?.error?.message || e.message}` }
