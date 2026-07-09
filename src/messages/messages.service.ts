@@ -9,8 +9,8 @@ export class MessagesService {
 
   constructor(private prisma: PrismaService, private pushService: PushService) {}
 
-  async create(data: { platform: string; from: string; content: string; messageId?: string; tenantId: string; direction?: string; fromName?: string }) {
-    const msg = await this.prisma.message.create({ data: { ...data, direction: data.direction || 'incoming' } })
+  async create(data: { platform: string; from: string; content: string; messageId?: string; tenantId: string; direction?: string; fromName?: string; status?: string }) {
+    const msg = await this.prisma.message.create({ data: { ...data, direction: data.direction || 'incoming', status: data.status || 'sent' } })
     this.newMessage$.next(msg)
 
     // Push notification for incoming messages
@@ -86,6 +86,10 @@ export class MessagesService {
       nextCursor: messages.length === take ? messages[messages.length - 1].id : null,
       hasMore,
     }
+  }
+
+  async updateStatus(messageId: string, status: string) {
+    return this.prisma.message.updateMany({ where: { messageId }, data: { status } })
   }
 
   async findConversations(tenantId: string) {

@@ -84,7 +84,8 @@ export class WhatsappService {
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
-      return { success: true, message: `Mesaj basariyla gonderildi (ID: ${res.data?.messages?.[0]?.id || 'OK'})` }
+      const msgId = res.data?.messages?.[0]?.id
+      return { success: true, messageId: msgId, message: `Mesaj basariyla gonderildi${msgId ? ' (ID: ' + msgId + ')' : ''}` }
     } catch (e: any) {
       return { success: false, message: `Gonderim hatasi: ${e?.response?.data?.error?.message || e.message}` }
     }

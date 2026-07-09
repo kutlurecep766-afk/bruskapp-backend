@@ -81,12 +81,10 @@ export class InstagramController {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
     const result = await this.instagramService.sendMessage(tenantId, dto.to, dto.message)
-    console.log('Instagram send result:', JSON.stringify(result))
     if (result.success) {
       const saved = await this.messagesService.create({
-        platform: 'instagram', from: dto.to, content: dto.message, tenantId, direction: 'outgoing',
+        platform: 'instagram', from: dto.to, content: dto.message, tenantId, direction: 'outgoing', status: 'sent',
       }).catch(e => { console.error('Instagram save error:', e); return null })
-      console.log('Instagram saved msg:', saved?.id)
     }
     return result
   }
@@ -163,7 +161,7 @@ export class InstagramController {
             if (reply) {
               await this.instagramService.sendMessage(tenantId, senderId, reply)
               await this.messagesService.create({
-                platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing',
+                platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing', status: 'sent',
               }).catch(() => {})
             }
           } catch (e) {

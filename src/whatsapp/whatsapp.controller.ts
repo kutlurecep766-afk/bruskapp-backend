@@ -83,8 +83,10 @@ export class WhatsappController {
     if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
     const result = await this.whatsappService.sendMessage(tenantId, dto.to, dto.message)
     if (result.success) {
+      const msgId = result.messageId || result.data?.messages?.[0]?.id
       await this.messagesService.create({
         platform: 'whatsapp', from: dto.to.replace(/[^0-9]/g, ''), content: dto.message, tenantId, direction: 'outgoing',
+        messageId: msgId, status: 'sent',
       }).catch(() => {})
     }
     return result
@@ -121,6 +123,20 @@ export class WhatsappController {
     const config = await this.whatsappService.findByPhoneNumberId(phoneNumberId)
     if (!config) return { status: 'ok' }
     const tenantId = config.tenantId
+
+    // handle delivery/read status updates
+    const statuses = changes.statuses || []
+    for (const st of statuses) {
+      const stMsgId = st.id
+      if (!stMsgId) continue
+      if (st.status === 'delivered' || st.status === 'read') {
+        if (st.status === 'read') {
+          this.messagesService.updateStatus(stMsgId, 'read').catch(() => {})
+        } else if (st.status === 'delivered') {
+          this.messagesService.updateStatus(stMsgId, 'delivered').catch(() => {})
+        }
+      }
+    }
 
     const messages = changes.messages || []
     for (const msg of messages) {
@@ -159,9 +175,11 @@ export class WhatsappController {
           const reply = await this.webchatService.generateResponse(text)
 
           if (reply) {
-            await this.whatsappService.sendMessage(tenantId, from, reply)
+            const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
+            const aiMsgId = sendResult.messageId
             await this.messagesService.create({
               platform: 'whatsapp', from, content: reply, tenantId, direction: 'outgoing',
+              messageId: aiMsgId, status: 'sent',
             }).catch(() => {})
           }
         } catch (e) {

@@ -158,6 +158,7 @@ model Message {
   content   String
   direction String @default("incoming")
   messageId String?
+  status    String   @default("sent")
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
