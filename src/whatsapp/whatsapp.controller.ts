@@ -156,13 +156,7 @@ export class WhatsappController {
             if (monthCount >= limit) continue
           }
 
-          // yaziyor bilgisi gonder
-          this.whatsappService.sendTypingIndicator(tenantId, from, true).catch(() => {})
-
           const reply = await this.webchatService.generateResponse(text)
-
-          // yaziyor bilgisini kapat
-          this.whatsappService.sendTypingIndicator(tenantId, from, false).catch(() => {})
 
           if (reply) {
             await this.whatsappService.sendMessage(tenantId, from, reply)

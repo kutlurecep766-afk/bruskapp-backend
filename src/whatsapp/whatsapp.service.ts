@@ -110,7 +110,7 @@ export class WhatsappService {
   async sendTypingIndicator(tenantId: string, to: string, typing: boolean) {
     try {
       const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
-      await lastValueFrom(
+      const res = await lastValueFrom(
         this.http.post(
           `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
           {
@@ -123,7 +123,10 @@ export class WhatsappService {
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
-    } catch {}
+      this.logger.log(`Typing ${typing ? 'on' : 'off'} for ${to}: ${JSON.stringify(res.data)}`)
+    } catch (e: any) {
+      this.logger.error(`Typing ${typing ? 'on' : 'off'} error for ${to}: ${e?.response?.data?.error?.message || e.message}`)
+    }
   }
 
   async findByPhoneNumberId(phoneNumberId: string) {
