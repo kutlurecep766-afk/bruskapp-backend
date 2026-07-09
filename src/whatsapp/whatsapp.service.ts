@@ -171,9 +171,11 @@ export class WhatsappService {
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
-      return { success: true, message: 'Profil guncellendi' }
+      this.logger.log(`WhatsApp profile update response: ${JSON.stringify(res.data)}`)
+      return { success: true, message: 'Profil guncellendi', apiResponse: res.data }
     } catch (e: any) {
-      return { success: false, message: `Guncelleme hatasi: ${e?.response?.data?.error?.message || e.message}` }
+      this.logger.error(`WhatsApp profile update error: ${JSON.stringify(e?.response?.data) || e.message}`)
+      return { success: false, message: `Guncelleme hatasi: ${e?.response?.data?.error?.message || e.message}`, apiError: e?.response?.data }
     }
   }
 
