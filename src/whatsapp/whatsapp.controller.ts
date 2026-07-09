@@ -133,6 +133,11 @@ export class WhatsappController {
         platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
+      // okundu bilgisi gonder
+      if (msg.id) {
+        this.whatsappService.markAsRead(tenantId, from, msg.id).catch(() => {})
+      }
+
       // AI auto-reply
       if (msg.text?.body && !this.whatsappService.isAiPaused(tenantId, from)) {
         try {
@@ -151,7 +156,14 @@ export class WhatsappController {
             if (monthCount >= limit) continue
           }
 
+          // yaziyor bilgisi gonder
+          this.whatsappService.sendTypingIndicator(tenantId, from, true).catch(() => {})
+
           const reply = await this.webchatService.generateResponse(text)
+
+          // yaziyor bilgisini kapat
+          this.whatsappService.sendTypingIndicator(tenantId, from, false).catch(() => {})
+
           if (reply) {
             await this.whatsappService.sendMessage(tenantId, from, reply)
             await this.messagesService.create({

@@ -90,6 +90,42 @@ export class WhatsappService {
     }
   }
 
+  async markAsRead(tenantId: string, to: string, messageId: string) {
+    try {
+      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
+      await lastValueFrom(
+        this.http.post(
+          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
+          {
+            messaging_product: 'whatsapp',
+            status: 'read',
+            message_id: messageId,
+          },
+          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+        )
+      )
+    } catch {}
+  }
+
+  async sendTypingIndicator(tenantId: string, to: string, typing: boolean) {
+    try {
+      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
+      await lastValueFrom(
+        this.http.post(
+          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
+          {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: to.replace(/[^0-9]/g, ''),
+            type: 'action',
+            action: { name: typing ? 'typing_on' : 'typing_off' },
+          },
+          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+        )
+      )
+    } catch {}
+  }
+
   async findByPhoneNumberId(phoneNumberId: string) {
     return this.prisma.tenantWhatsAppConfig.findFirst({ where: { phoneNumberId, active: true } })
   }
