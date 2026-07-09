@@ -123,7 +123,10 @@ export class InstagramController {
         const msg = event.message
         if (!senderId || !msg?.text) continue
 
-        // fetch username asynchronously (don't block)
+        // skip echoes (messages we sent ourselves)
+        if (msg.is_echo) continue
+
+        // fetch username
         const username = await this.instagramService.getUsername(tenantId, senderId).catch(() => null)
 
         await this.messagesService.create({
