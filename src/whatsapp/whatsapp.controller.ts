@@ -1,4 +1,7 @@
-import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header } from '@nestjs/common'
+import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { diskStorage } from 'multer'
+import * as path from 'path'
 import { Public } from '../auth/public.decorator'
 import { WhatsappService } from './whatsapp.service'
 import { MessagesService } from '../messages/messages.service'
@@ -82,6 +85,25 @@ export class WhatsappController {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
     return this.whatsappService.updateProfile(tenantId, body)
+  }
+
+  @Post('profile/picture')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: '/tmp',
+      filename: (req, file, cb) => cb(null, 'wa-profile-' + Date.now() + path.extname(file.originalname)),
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (!file.mimetype.startsWith('image/')) cb(new BadRequestException('Sadece resim dosyalari'), false)
+      else cb(null, true)
+    },
+  }))
+  async uploadProfilePicture(@Req() req: any, @UploadedFile() file: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
+    if (!file) throw new BadRequestException('Dosya gerekli')
+    return this.whatsappService.uploadProfilePicture(tenantId, file.path, file.mimetype)
   }
 
   @Post('test')

@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { HttpService } from '@nestjs/axios'
 import { lastValueFrom } from 'rxjs'
+import * as fs from 'fs'
+import * as path from 'path'
 import { PrismaService } from '../prisma.service'
 import { EncryptionService } from '../common/encryption.service'
 
@@ -171,6 +173,76 @@ export class WhatsappService {
       return { success: true, message: 'Profil guncellendi' }
     } catch (e: any) {
       return { success: false, message: `Guncelleme hatasi: ${e?.response?.data?.error?.message || e.message}` }
+    }
+  }
+
+  async uploadProfilePicture(tenantId: string, filePath: string, mimeType: string) {
+    try {
+      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
+
+      // 1) upload media to WhatsApp
+      const boundary = '----FormBoundary' + Math.random().toString(36).slice(2)
+      const fileBuf = fs.readFileSync(filePath)
+      let body = ''
+      body += `--${boundary}\r\n`
+      body += `Content-Disposition: form-data; name="messaging_product"\r\n\r\n`
+      body += `whatsapp\r\n`
+      body += `--${boundary}\r\n`
+      body += `Content-Disposition: form-data; name="file"; filename="profile.jpg"\r\n`
+      body += `Content-Type: ${mimeType}\r\n\r\n`
+      const bodyPrefix = Buffer.from(body, 'utf-8')
+      const bodySuffix = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8')
+      const fullBody = Buffer.concat([bodyPrefix, fileBuf, bodySuffix])
+
+      const mediaRes = await fetch(
+        `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/media`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': fullBody.length.toString(),
+          },
+          body: fullBody,
+        }
+      )
+
+      if (!mediaRes.ok) {
+        const err = await mediaRes.text()
+        return { success: false, message: `Medya yukleme hatasi: ${err}` }
+      }
+
+      const mediaData = await mediaRes.json() as any
+      const mediaId = mediaData.id
+      if (!mediaId) return { success: false, message: 'Medya ID alinamadi' }
+
+      // 2) set as profile picture
+      const profileRes = await fetch(
+        `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            profile_picture_handle: mediaId,
+          }),
+        }
+      )
+
+      if (!profileRes.ok) {
+        const err = await profileRes.text()
+        return { success: false, message: `Profil resmi ayarlama hatasi: ${err}` }
+      }
+
+      // cleanup temp file
+      fs.unlink(filePath, () => {})
+
+      return { success: true, message: 'Profil resmi guncellendi' }
+    } catch (e: any) {
+      return { success: false, message: `Profil resmi hatasi: ${e.message}` }
     }
   }
 }
