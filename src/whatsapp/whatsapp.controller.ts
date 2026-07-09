@@ -70,6 +70,20 @@ export class WhatsappController {
     return { paused: this.whatsappService.isAiPaused(tenant.id, from) }
   }
 
+  @Get('profile')
+  async getProfile(@Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
+    return this.whatsappService.getProfile(tenantId)
+  }
+
+  @Post('profile')
+  async updateProfile(@Req() req: any, @Body() body: { about?: string; description?: string; email?: string; websites?: string[] }) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
+    return this.whatsappService.updateProfile(tenantId, body)
+  }
+
   @Post('test')
   async testConnection(@Req() req: any) {
     const tenantId = req.user?.tenantId

@@ -137,4 +137,40 @@ export class WhatsappService {
   async findByWebhookToken(token: string) {
     return this.prisma.tenantWhatsAppConfig.findFirst({ where: { webhookToken: token } })
   }
+
+  async getProfile(tenantId: string) {
+    try {
+      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
+      const res = await lastValueFrom(
+        this.http.get(
+          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile?fields=about,description,email,websites,profile_picture_url,address`,
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        )
+      )
+      return { success: true, data: res.data?.data?.[0] || res.data }
+    } catch (e: any) {
+      return { success: false, message: `Profil hatasi: ${e?.response?.data?.error?.message || e.message}` }
+    }
+  }
+
+  async updateProfile(tenantId: string, profile: { about?: string; description?: string; email?: string; websites?: string[] }) {
+    try {
+      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
+      const body: any = { messaging_product: 'whatsapp' }
+      if (profile.about !== undefined) body.about = profile.about
+      if (profile.description !== undefined) body.description = profile.description
+      if (profile.email !== undefined) body.email = profile.email
+      if (profile.websites !== undefined) body.websites = profile.websites
+      const res = await lastValueFrom(
+        this.http.post(
+          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
+          body,
+          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+        )
+      )
+      return { success: true, message: 'Profil guncellendi' }
+    } catch (e: any) {
+      return { success: false, message: `Guncelleme hatasi: ${e?.response?.data?.error?.message || e.message}` }
+    }
+  }
 }
