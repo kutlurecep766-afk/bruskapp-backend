@@ -159,17 +159,35 @@ export class WhatsappService {
     try {
       const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
       const body: any = { messaging_product: 'whatsapp' }
-      if (profile.about !== undefined) body.about = profile.about
-      if (profile.description !== undefined) body.description = profile.description
-      if (profile.email !== undefined) body.email = profile.email
-      if (profile.websites !== undefined) body.websites = profile.websites
-      const res = await lastValueFrom(
-        this.http.post(
-          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
-          body,
-          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+      if (profile.about !== undefined && profile.about !== '') body.about = profile.about
+      if (profile.description !== undefined && profile.description !== '') body.description = profile.description
+      if (profile.email !== undefined && profile.email !== '') body.email = profile.email
+      if (profile.websites !== undefined && profile.websites.length > 0) body.websites = profile.websites
+      // bos alanlari temizlemek icin ayri bir istek (sadece silinecek alanlari belirt)
+      const clearBody: any = { messaging_product: 'whatsapp' }
+      if (profile.about === '') clearBody.about = ''
+      if (profile.description === '') clearBody.description = ''
+      if (profile.email === '') clearBody.email = ''
+      if (profile.websites !== undefined && profile.websites.length === 0) clearBody.websites = []
+      const hasClear = Object.keys(clearBody).length > 1
+      if (hasClear) {
+        await lastValueFrom(
+          this.http.post(
+            `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
+            clearBody,
+            { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+          )
         )
-      )
+      }
+      if (Object.keys(body).length > 1) {
+        await lastValueFrom(
+          this.http.post(
+            `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
+            body,
+            { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
+          )
+        )
+      }
       return { success: true, message: 'Profil guncellendi' }
     } catch (e: any) {
       return { success: false, message: `Guncelleme hatasi: ${e?.response?.data?.error?.message || e.message}` }
@@ -177,72 +195,9 @@ export class WhatsappService {
   }
 
   async uploadProfilePicture(tenantId: string, filePath: string, mimeType: string) {
-    try {
-      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
-
-      // 1) upload media to WhatsApp
-      const boundary = '----FormBoundary' + Math.random().toString(36).slice(2)
-      const fileBuf = fs.readFileSync(filePath)
-      let body = ''
-      body += `--${boundary}\r\n`
-      body += `Content-Disposition: form-data; name="messaging_product"\r\n\r\n`
-      body += `whatsapp\r\n`
-      body += `--${boundary}\r\n`
-      body += `Content-Disposition: form-data; name="file"; filename="profile.jpg"\r\n`
-      body += `Content-Type: ${mimeType}\r\n\r\n`
-      const bodyPrefix = Buffer.from(body, 'utf-8')
-      const bodySuffix = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf-8')
-      const fullBody = Buffer.concat([bodyPrefix, fileBuf, bodySuffix])
-
-      const mediaRes = await fetch(
-        `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/media`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': `multipart/form-data; boundary=${boundary}`,
-            'Content-Length': fullBody.length.toString(),
-          },
-          body: fullBody,
-        }
-      )
-
-      if (!mediaRes.ok) {
-        const err = await mediaRes.text()
-        return { success: false, message: `Medya yukleme hatasi: ${err}` }
-      }
-
-      const mediaData = await mediaRes.json() as any
-      const mediaId = mediaData.id
-      if (!mediaId) return { success: false, message: 'Medya ID alinamadi' }
-
-      // 2) set as profile picture
-      const profileRes = await fetch(
-        `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            messaging_product: 'whatsapp',
-            profile_picture_handle: mediaId,
-          }),
-        }
-      )
-
-      if (!profileRes.ok) {
-        const err = await profileRes.text()
-        return { success: false, message: `Profil resmi ayarlama hatasi: ${err}` }
-      }
-
-      // cleanup temp file
-      fs.unlink(filePath, () => {})
-
-      return { success: true, message: 'Profil resmi guncellendi' }
-    } catch (e: any) {
-      return { success: false, message: `Profil resmi hatasi: ${e.message}` }
-    }
+    // WhatsApp Cloud API profil resmini API uzerinden degistirmeyi desteklemez.
+    // Sadece Meta panelinden degistirilebilir: https://business.facebook.com/wa/manage
+    fs.unlink(filePath, () => {})
+    return { success: false, message: 'WhatsApp Cloud API profil resmi yuklemeyi desteklemiyor. Lutfen Meta panelinden guncelleyin: https://business.facebook.com/wa/manage' }
   }
 }
