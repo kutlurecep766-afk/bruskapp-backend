@@ -156,27 +156,7 @@ export class WhatsappService {
   }
 
   async updateProfile(tenantId: string, profile: { about?: string; description?: string; email?: string; websites?: string[] }) {
-    try {
-      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
-      const body: any = { messaging_product: 'whatsapp' }
-      if (profile.about !== undefined && profile.about !== '') body.about = profile.about
-      if (profile.description !== undefined && profile.description !== '') body.description = profile.description
-      if (profile.email !== undefined && profile.email !== '') body.email = profile.email
-      if (profile.websites !== undefined && profile.websites.length > 0) body.websites = profile.websites
-      if (Object.keys(body).length <= 1) return { success: true, message: 'Guncellenecek alan yok' }
-      const res = await lastValueFrom(
-        this.http.post(
-          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile`,
-          body,
-          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
-        )
-      )
-      this.logger.log(`WhatsApp profile update response: ${JSON.stringify(res.data)}`)
-      return { success: true, message: 'Profil guncellendi', apiResponse: res.data }
-    } catch (e: any) {
-      this.logger.error(`WhatsApp profile update error: ${JSON.stringify(e?.response?.data) || e.message}`)
-      return { success: false, message: `Guncelleme hatasi: ${e?.response?.data?.error?.message || e.message}`, apiError: e?.response?.data }
-    }
+    return { success: false, message: 'WhatsApp Cloud API profil guncellemeyi desteklemez. Lutfen Meta panelinden guncelleyin: https://business.facebook.com/wa/manage' }
   }
 
   async uploadProfilePicture(tenantId: string, filePath: string, mimeType: string) {
