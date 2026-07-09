@@ -149,8 +149,12 @@ export class WhatsappService {
           { headers: { Authorization: `Bearer ${accessToken}` } }
         )
       )
-      return { success: true, data: res.data?.data?.[0] || res.data }
+      this.logger.log(`WhatsApp profile raw response: ${JSON.stringify(res.data)}`)
+      // Graph API returns { data: [{ about: ..., description: ..., id: ... }] }
+      const profileData = res.data?.data?.[0] || res.data
+      return { success: true, data: profileData }
     } catch (e: any) {
+      this.logger.error(`WhatsApp profile fetch error: ${JSON.stringify(e?.response?.data) || e.message}`)
       return { success: false, message: `Profil hatasi: ${e?.response?.data?.error?.message || e.message}` }
     }
   }
