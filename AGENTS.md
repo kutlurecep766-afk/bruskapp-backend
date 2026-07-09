@@ -52,6 +52,41 @@ NestJS + PostgreSQL backend for BruskApp (marketplace order management). 102 `Or
 - `src/marketplace/providers/n11.provider.ts`
 - `src/marketplace/providers/trendyolgo.provider.ts`
 
+## Blue-Green Deploy Kritik Kurallar
+
+### ASLA manuel `docker run` yapma!
+- Her zaman `deploy-backend.ps1` (backend) veya `fast-deploy.ps1` (admin) kullan.
+- Script'ler volume'u otomatik mount eder: `-v opt_backend-data:/app/data`
+
+### Volume olmazsa ne olur?
+- `/app/data/uploads/` içindeki görseller (logo, banner, ürün resimleri) kaybolur
+- 1000+ mağazanın görseli aynı anda gider
+- DB'de dosya adı referansı kalır ama dosyalar olmaz
+
+### Manuel müdahale gerekiyorsa (script timeout vb):
+```bash
+# Blue container'i volume ILE baslat (ENCRYPTION_KEY de unutma!)
+docker run -d --name bruskapp-backend-blue --restart unless-stopped \
+  --network opt_bruskapp-network \
+  --env-file /opt/.env \
+  -v opt_backend-data:/app/data \
+  opt-bruskapp-backend:latest
+
+# Healthcheck bekle (30-60 saniye)
+docker exec bruskapp-nginx curl http://bruskapp-backend-blue:4000/api/health
+
+# Swap
+docker rename bruskapp-backend bruskapp-backend-old
+docker rename bruskapp-backend-blue bruskapp-backend
+docker rm -f bruskapp-backend-old
+nginx -s reload
+```
+
+### Deploy script timeout olursa:
+- `deploy-backend.ps1` içinde build `--no-cache` KULLANILMAZ (cache ile hızlı)
+- Healthcheck max 150 saniye bekler
+- Yine de timeout olursa yukarıdaki manuel swap komutlarını çalıştır
+
 ## Şifreleme Mimarisi (AES-256-GCM)
 
 ### Nasıl çalışır

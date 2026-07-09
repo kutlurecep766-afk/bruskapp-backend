@@ -9,7 +9,7 @@ export class MessagesService {
 
   constructor(private prisma: PrismaService, private pushService: PushService) {}
 
-  async create(data: { platform: string; from: string; content: string; messageId?: string; tenantId: string; direction?: string }) {
+  async create(data: { platform: string; from: string; content: string; messageId?: string; tenantId: string; direction?: string; fromName?: string }) {
     const msg = await this.prisma.message.create({ data: { ...data, direction: data.direction || 'incoming' } })
     this.newMessage$.next(msg)
 
@@ -90,9 +90,10 @@ export class MessagesService {
 
   async findConversations(tenantId: string) {
     const rows = await this.prisma.$queryRawUnsafe<Array<{
-      platform: string; from: string; lastContent: string; lastMessageAt: Date; count: bigint
+      platform: string; from: string; fromName: string | null; lastContent: string; lastMessageAt: Date; count: bigint
     }>>(`
-      SELECT platform, "from", 
+      SELECT platform, "from",
+        (SELECT "fromName" FROM "Message" m2 WHERE m2.platform = m1.platform AND m2."from" = m1."from" AND m2."fromName" IS NOT NULL ORDER BY m2."createdAt" DESC LIMIT 1) as "fromName",
         (SELECT content FROM "Message" m2 WHERE m2.platform = m1.platform AND m2."from" = m1."from" ORDER BY m2."createdAt" DESC LIMIT 1) as "lastContent",
         MAX("createdAt") as "lastMessageAt",
         COUNT(*) as count
@@ -106,6 +107,7 @@ export class MessagesService {
       id: r.platform + ':' + r.from,
       platform: r.platform,
       from: r.from,
+      fromName: r.fromName,
       lastContent: r.lastContent,
       lastMessageAt: r.lastMessageAt,
       count: Number(r.count),

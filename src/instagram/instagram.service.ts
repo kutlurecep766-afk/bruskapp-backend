@@ -8,12 +8,38 @@ import { EncryptionService } from '../common/encryption.service'
 export class InstagramService {
   private readonly logger = new Logger(InstagramService.name)
   private apiVersion = 'v21.0'
+  private pausedConversations = new Set<string>()
 
   constructor(
     private readonly http: HttpService,
     private readonly prisma: PrismaService,
     private readonly encryption: EncryptionService,
   ) {}
+
+  isAiPaused(tenantId: string, from: string): boolean {
+    return this.pausedConversations.has(tenantId + ':' + from)
+  }
+
+  setAiPaused(tenantId: string, from: string, paused: boolean) {
+    const key = tenantId + ':' + from
+    if (paused) this.pausedConversations.add(key)
+    else this.pausedConversations.delete(key)
+  }
+
+  async getUsername(tenantId: string, senderId: string): Promise<string | null> {
+    try {
+      const { accessToken } = await this.getCredentials(tenantId)
+      const res = await lastValueFrom(
+        this.http.get(`https://graph.facebook.com/${this.apiVersion}/${senderId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          params: { fields: 'username,name' },
+        })
+      )
+      return res.data?.username || res.data?.name || null
+    } catch {
+      return null
+    }
+  }
 
   async getConfig(tenantId: string) {
     const config = await this.prisma.tenantInstagramConfig.findUnique({ where: { tenantId } })

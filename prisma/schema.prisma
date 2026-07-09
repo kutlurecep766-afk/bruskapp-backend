@@ -154,6 +154,7 @@ model Message {
   id        String   @id @default(uuid())
   platform  String
   from      String
+  fromName  String?
   content   String
   direction String @default("incoming")
   messageId String?
