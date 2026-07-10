@@ -192,7 +192,8 @@ export class WhatsappController {
         }
       }
 
-      const displayContent = text || '(media)'
+      const isImage = !!(msg.type === 'image' && msg.image?.id)
+      const displayContent = isImage ? ('📷 ' + (text || 'Resim')) : text
       await this.messagesService.create({
         platform: 'whatsapp', from, content: displayContent, messageId: msg.id, tenantId, direction: 'incoming',
       })
@@ -224,13 +225,20 @@ export class WhatsappController {
               this.whatsappService.markAsRead(tenantId, msg.id, true)
             }
 
-            const reply = imageBase64
-              ? await this.webchatService.generateMultimodalResponse(text, imageBase64, imageMime!)
-              : text
-                ? await this.webchatService.generateResponse(text)
-                : null
+            let reply: string | null = null
+            if (imageBase64) {
+              reply = await this.webchatService.generateMultimodalResponse(text, imageBase64, imageMime!)
+              // multimodal basarisiz olursa text-only dene
+              if (!reply && text) {
+                reply = await this.webchatService.generateResponse(text)
+              }
+            } else if (text) {
+              reply = await this.webchatService.generateResponse(text)
+            }
 
-            if (reply && msg.id) {
+            if (!reply) reply = 'Görseliniz alındı, en kısa sürede dönüş yapılacaktır.'
+
+            if (msg.id) {
               await new Promise(r => setTimeout(r, 1500))
               const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
               const aiMsgId = sendResult.messageId

@@ -149,7 +149,8 @@ export class InstagramController {
           }
         }
 
-        const displayContent = msgText || '(media)'
+        const isImage = !!(msg?.attachments?.length && msg.attachments.some(a => a.type === 'image'))
+        const displayContent = isImage ? ('📷 ' + (msgText || 'Resim')) : (msgText || '(mesaj)')
         await this.messagesService.create({
           platform: 'instagram',
           from: senderId,
@@ -178,14 +179,19 @@ export class InstagramController {
               if (monthCount >= limit) continue
             }
 
-            const reply = imageBase64
-              ? await this.webchatService.generateMultimodalResponse(msgText, imageBase64, imageMime!)
-              : msgText
-                ? await this.webchatService.generateResponse(msgText)
-                : null
+            let reply: string | null = null
+            if (imageBase64) {
+              reply = await this.webchatService.generateMultimodalResponse(msgText, imageBase64, imageMime!)
+              if (!reply && msgText) {
+                reply = await this.webchatService.generateResponse(msgText)
+              }
+            } else if (msgText) {
+              reply = await this.webchatService.generateResponse(msgText)
+            }
 
-            if (reply) {
-              await this.instagramService.sendMessage(tenantId, senderId, reply)
+            if (!reply) reply = 'Görseliniz alındı, en kısa sürede dönüş yapılacaktır.'
+
+            await this.instagramService.sendMessage(tenantId, senderId, reply)
               await this.messagesService.create({
                 platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing', status: 'sent',
               }).catch(() => {})

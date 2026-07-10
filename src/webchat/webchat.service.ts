@@ -174,7 +174,7 @@ export class WebchatService {
         ]},
       ],
       temperature: 0,
-      max_tokens: 400,
+      max_tokens: 800,
     })
     try {
       const controller = new AbortController()
