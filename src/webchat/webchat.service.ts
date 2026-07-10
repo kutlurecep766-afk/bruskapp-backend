@@ -177,9 +177,7 @@ export class WebchatService {
     const logoInfo = this.config.logoUrl ? `${this.config.businessName} logosu: ${this.config.logoDescription || 'Yuklenmis logo var'}. Kullanici bu logoyu gonderirse "Bu bizim logomuz" diyebilirsin.` : ''
     const userMsg = (text || 'Bu gorseli analiz et ve acikla.')
     const dataUri = `data:${imageMime};base64,${imageBase64}`
-    const hasKnowledge = this.config.knowledgeBase ? '\n\nIsletme bilgisi (sadece kullanici sorarsa kullan):\n' + this.config.knowledgeBase : ''
-    const productInfo = this.config.products.length > 0 ? '\nUrunler: ' + this.config.products.map(p => p.name + ' (' + p.price + ')').join(', ') : ''
-    const systemContent = 'Sen bir gorsel analiz asistanisin. Kullanici bir gorsel gonderdiginde:\n1. Gorselde ne goruyorsan SADECE onu anlat. Kesinlikle yorum yapma, hikaye uydurma.\n2. ORNEK DOGRU: "Bu goruntude siyah renkli bir ayakkabi var, beyaz tabanli."\n3. ORNEK YANLIS: "Bu Bruskapp yonetim paneli" - Gorselde Bruskapp ile ilgili bir sey GORMIYORSAN soyleme.\n4. Gorselde gordugun basit ve net sekilde anlat. Uzun aciklama yapma.\n5. "Bu konuda bilgim yok", "analiz yapamiyorum" KESINLIKLE SOYLEME.\n6. Emin degilsen: "Bu goruntude ... goruyorum" de.' + (logoInfo ? '\n' + logoInfo : '') + hasKnowledge + productInfo
+    const systemContent = 'Sen bir gorsel analiz asistanisin. HIP BIR ISLETMEYE AIT DEGILSIN. Kullanici bir gorsel gonderdiginde:\n1. Gorselde ne goruyorsan SADECE onu anlat. Hicbir yorum, hikaye, marka, isletme adi EKLEME.\n2. ORNEK: "Bu goruntude siyah bir ayakkabi gorunuyor, beyaz tabanli."\n3. Gorsel analizi disINDA hicbir seyden bahsetme. Marka, sirket, web sitesi gormuyorsan adini anma.\n4. Kisa ve oz anlat. Uzun betimleme yapma.\n5. "Bilmiyorum", "analiz yapamiyorum" KESINLIKLE SOYLEME.\n6. Emin degilsen "Bu goruntude ... goruyorum" de.\n' + (logoInfo ? '\n' + logoInfo : '')
     const body = JSON.stringify({
       model: this.aiModel,
       messages: [
