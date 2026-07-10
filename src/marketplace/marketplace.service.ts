@@ -210,6 +210,93 @@ export class MarketplaceService {
     }
   }
 
+  async getUnlinkedProducts(tenantId: string) {
+    const mpProducts = await this.prisma.marketplaceProduct.findMany({
+      where: { tenantId },
+      orderBy: { platform: 'asc' },
+    })
+
+    const localBarcodes = new Set(
+      (await this.prisma.product.findMany({ where: { tenantId, barcode: { not: '' } }, select: { barcode: true } }))
+        .map(p => p.barcode)
+    )
+
+    const unlinked = mpProducts.filter(mp => !localBarcodes.has(mp.barcode))
+    const linked = mpProducts.filter(mp => localBarcodes.has(mp.barcode))
+
+    return {
+      total: mpProducts.length,
+      linked: linked.length,
+      unlinked: unlinked.length,
+      unlinkedProducts: unlinked,
+    }
+  }
+
+  async mergeAllByBarcode(tenantId: string) {
+    const unlinked = await this.prisma.marketplaceProduct.findMany({ where: { tenantId } })
+    const localProducts = await this.prisma.product.findMany({ where: { tenantId, barcode: { not: '' } } })
+    const localByBarcode = new Map(localProducts.map(p => [p.barcode, p]))
+
+    let created = 0
+    let skipped = 0
+
+    for (const mp of unlinked) {
+      if (!mp.barcode) { skipped++; continue }
+      if (localByBarcode.has(mp.barcode)) { skipped++; continue }
+
+      await this.prisma.product.create({
+        data: {
+          tenantId,
+          name: mp.title,
+          barcode: mp.barcode,
+          price: mp.price,
+          stock: mp.stock,
+          category: mp.category || '',
+          description: mp.description || '',
+          images: mp.images || [],
+        },
+      })
+      created++
+    }
+
+    return { success: true, message: `${created} ürün oluşturuldu, ${skipped} atlandı`, created, skipped }
+  }
+
+  async mergeManual(tenantId: string, marketplaceProductId: number, localProductId: number) {
+    const mp = await this.prisma.marketplaceProduct.findFirst({ where: { id: marketplaceProductId, tenantId } })
+    if (!mp) throw new NotFoundException('Pazaryeri ürünü bulunamadı')
+
+    const local = await this.prisma.product.findFirst({ where: { id: localProductId, tenantId } })
+    if (!local) throw new NotFoundException('Yerel ürün bulunamadı')
+
+    await this.prisma.product.update({
+      where: { id: localProductId },
+      data: { barcode: mp.barcode },
+    })
+
+    return { success: true, message: `${local.name} barkodu "${mp.barcode}" olarak güncellendi` }
+  }
+
+  async createLocalFromMarketplace(tenantId: string, marketplaceProductId: number) {
+    const mp = await this.prisma.marketplaceProduct.findFirst({ where: { id: marketplaceProductId, tenantId } })
+    if (!mp) throw new NotFoundException('Pazaryeri ürünü bulunamadı')
+
+    const product = await this.prisma.product.create({
+      data: {
+        tenantId,
+        name: mp.title,
+        barcode: mp.barcode,
+        price: mp.price,
+        stock: mp.stock,
+        category: mp.category || '',
+        description: mp.description || '',
+        images: mp.images || [],
+      },
+    })
+
+    return { success: true, message: `${product.name} oluşturuldu`, product }
+  }
+
   async checkBulkStockStatus(platform: string, tenantId: string, trackingId: string) {
     const provider = this.getProvider(platform)
     if (!provider.checkBulkStockStatus) {

@@ -141,4 +141,32 @@ export class MarketplaceController {
     if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
     return this.marketplaceService.checkBulkStockStatus(platform, tenantId, trackingId)
   }
+
+  @Get('unlinked')
+  async getUnlinked(@Req() req: any) {
+    const tenantId = this.extractTenant(req)
+    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
+    return this.marketplaceService.getUnlinkedProducts(tenantId)
+  }
+
+  @Post('merge-auto')
+  async mergeAuto(@Req() req: any) {
+    const tenantId = this.extractTenant(req)
+    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
+    return this.marketplaceService.mergeAllByBarcode(tenantId)
+  }
+
+  @Post('merge-manual')
+  async mergeManual(@Req() req: any, @Body() body: { marketplaceProductId: number; localProductId: number }) {
+    const tenantId = this.extractTenant(req)
+    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
+    return this.marketplaceService.mergeManual(tenantId, body.marketplaceProductId, body.localProductId)
+  }
+
+  @Post('create-local-from-marketplace')
+  async createLocalFromMarketplace(@Req() req: any, @Body() body: { marketplaceProductId: number }) {
+    const tenantId = this.extractTenant(req)
+    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
+    return this.marketplaceService.createLocalFromMarketplace(tenantId, body.marketplaceProductId)
+  }
 }

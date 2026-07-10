@@ -61,6 +61,14 @@ export class ProductsController {
     return this.productsService.syncToMarketplaces(tenantId, body.productIds)
   }
 
+  @Get('by-barcode/:barcode')
+  async findByBarcode(@Req() req: any, @Param('barcode') barcode: string) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    const product = await this.productsService.findByBarcode(tenantId, barcode)
+    return { found: !!product, product }
+  }
+
   @Post('qr-stock')
   async qrStock(@Req() req: any, @Body() body: { barcode: string; quantity: number; type: 'ADD' | 'DEDUCT'; note?: string }) {
     const tenantId = req.user?.tenantId
