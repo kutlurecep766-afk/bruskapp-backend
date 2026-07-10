@@ -267,6 +267,7 @@ model MarketplaceOrderItem {
 model StockMovement {
   id          Int      @id @default(autoincrement())
   tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   productId   Int
   product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
   type        String   // ADD, DEDUCT, SYNC_FROM_MARKETPLACE, PURCHASE_INVOICE, ORDER, MANUAL
