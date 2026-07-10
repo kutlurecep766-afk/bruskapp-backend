@@ -30,6 +30,8 @@ import { PrinterModule } from './printer/printer.module'
 import { EInvoiceModule } from './einvoice/einvoice.module'
 import { YemeksepetiModule } from './yemeksepeti/yemeksepeti.module'
 import { MarketplaceModule } from './marketplace/marketplace.module'
+import { StockMovementsModule } from './stock-movements/stock-movements.module'
+import { PurchaseInvoicesModule } from './purchase-invoices/purchase-invoices.module'
 import { EncryptionModule } from './common/encryption.module'
 import { QueuesModule } from './queues/queues.module'
 
@@ -64,6 +66,7 @@ import { QueuesModule } from './queues/queues.module'
     KargomucuzModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,
     MarketplaceModule,
+    StockMovementsModule, PurchaseInvoicesModule,
     EncryptionModule, QueuesModule,
   ],
   controllers: [AppController],

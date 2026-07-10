@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 import { MarketplaceService } from '../marketplace/marketplace.service'
+import { StockMovementsService } from '../stock-movements/stock-movements.service'
 
 @Injectable()
 export class ProductsService {
@@ -9,6 +10,7 @@ export class ProductsService {
   constructor(
     private prisma: PrismaService,
     private marketplaceService: MarketplaceService,
+    private stockMovementsService: StockMovementsService,
   ) {}
 
   async create(data: {
@@ -71,6 +73,14 @@ export class ProductsService {
       where: { id },
       data,
     })
+  }
+
+  async findByBarcode(tenantId: string, barcode: string) {
+    return this.prisma.product.findFirst({ where: { tenantId, barcode } })
+  }
+
+  async addStockMovement(tenantId: string, productId: number, type: string, quantity: number, note?: string, createdById?: string) {
+    return this.stockMovementsService.create({ tenantId, productId, type, quantity, note, createdById })
   }
 
   async remove(id: number) {

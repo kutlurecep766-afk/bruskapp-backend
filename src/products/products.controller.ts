@@ -61,6 +61,26 @@ export class ProductsController {
     return this.productsService.syncToMarketplaces(tenantId, body.productIds)
   }
 
+  @Post('qr-stock')
+  async qrStock(@Req() req: any, @Body() body: { barcode: string; quantity: number; type: 'ADD' | 'DEDUCT'; note?: string }) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    const product = await this.productsService.findByBarcode(tenantId, body.barcode)
+    if (!product) throw new NotFoundException('Barkod eşleşen ürün bulunamadı')
+    const qty = body.type === 'DEDUCT' ? -Math.abs(body.quantity) : Math.abs(body.quantity)
+    return this.productsService.addStockMovement(tenantId, product.id, 'MANUAL', qty, body.note, req.user?.id)
+  }
+
+  @Post('manual-stock')
+  async manualStock(@Req() req: any, @Body() body: { productId: number; quantity: number; type: 'ADD' | 'DEDUCT'; note?: string }) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    const product = await this.productsService.findById(body.productId)
+    if (!product || product.tenantId !== tenantId) throw new NotFoundException('Ürün bulunamadı')
+    const qty = body.type === 'DEDUCT' ? -Math.abs(body.quantity) : Math.abs(body.quantity)
+    return this.productsService.addStockMovement(tenantId, product.id, 'MANUAL', qty, body.note, req.user?.id)
+  }
+
   @Delete(':id')
   async remove(@Req() req: any, @Param('id') id: string) {
     const product = await this.productsService.findById(parseInt(id))

@@ -184,6 +184,32 @@ export class MarketplaceService {
     return { orders, total }
   }
 
+  async pullStock(platform: string, tenantId: string) {
+    const provider = this.getProvider(platform)
+    const status = await provider.getConnectionStatus(tenantId)
+    if (!status.connected) return { success: false, message: 'Pazaryeri bağlı değil' }
+
+    try {
+      const result = await provider.getProducts(tenantId, 0, 500)
+      if (!result.products?.length) return { success: true, message: 'Pazaryerinde ürün bulunamadı', synced: 0 }
+
+      let synced = 0
+      for (const mp of result.products) {
+        if (!mp.barcode) continue
+        await this.prisma.marketplaceProduct.upsert({
+          where: { tenantId_platform_barcode: { tenantId, platform, barcode: mp.barcode } },
+          update: { stock: mp.stock, price: mp.price, title: mp.title, syncAt: new Date() },
+          create: { tenantId, platform, barcode: mp.barcode, title: mp.title, price: mp.price, stock: mp.stock, currency: mp.currency, description: mp.description, images: mp.images || [], category: mp.category, brand: mp.brand, marketplaceId: mp.marketplaceId },
+        })
+        synced++
+      }
+
+      return { success: true, message: `${synced} ürün senkronize edildi`, synced }
+    } catch (e: any) {
+      return { success: false, message: `Stok çekme hatasi: ${e.message}` }
+    }
+  }
+
   async checkBulkStockStatus(platform: string, tenantId: string, trackingId: string) {
     const provider = this.getProvider(platform)
     if (!provider.checkBulkStockStatus) {

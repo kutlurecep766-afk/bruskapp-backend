@@ -69,6 +69,13 @@ export class MarketplaceController {
     return this.marketplaceService.updateStock(platform, tenantId, body.updates)
   }
 
+  @Post(':platform/stock/pull')
+  async pullStock(@Req() req: any, @Param('platform') platform: string) {
+    const tenantId = this.extractTenant(req)
+    if (!tenantId) return { success: false, message: 'Yetkilendirme hatasi' }
+    return this.marketplaceService.pullStock(platform, tenantId)
+  }
+
   @Get(':platform/orders')
   async getOrders(@Req() req: any, @Param('platform') platform: string, @Query('page') page?: string, @Query('size') size?: string, @Query('status') status?: string) {
     const tenantId = this.extractTenant(req)

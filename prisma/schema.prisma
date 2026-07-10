@@ -31,6 +31,8 @@ model Tenant {
   marketplaceProducts MarketplaceProduct[]
   marketplaceOrders MarketplaceOrder[]
   products Product[]
+  stockMovements StockMovement[]
+  purchaseInvoices PurchaseInvoice[]
   whatsappConfig TenantWhatsAppConfig?
   instagramConfig TenantInstagramConfig?
 }
@@ -49,6 +51,8 @@ model Product {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  stockMovements StockMovement[]
+  purchaseItems   PurchaseInvoiceItem[]
 
   @@index([tenantId, barcode])
   @@index([tenantId, active])
@@ -258,6 +262,57 @@ model MarketplaceOrderItem {
   createdAt       DateTime @default(now())
 
   @@index([orderId])
+}
+
+model StockMovement {
+  id          Int      @id @default(autoincrement())
+  tenantId    String
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  type        String   // ADD, DEDUCT, SYNC_FROM_MARKETPLACE, PURCHASE_INVOICE, ORDER, MANUAL
+  quantity    Int      // positive for add, negative for deduct
+  balance     Int      // stock balance after this movement
+  reference   String?  // invoice number, order id, etc
+  note        String?
+  createdById String?
+  createdAt   DateTime @default(now())
+
+  @@index([tenantId, productId])
+  @@index([tenantId, createdAt])
+  @@index([productId])
+}
+
+model PurchaseInvoice {
+  id           Int      @id @default(autoincrement())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoiceNo    String
+  supplier     String
+  date         DateTime
+  totalAmount  Float
+  currency     String   @default("TRY")
+  note         String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  items        PurchaseInvoiceItem[]
+
+  @@index([tenantId, createdAt])
+}
+
+model PurchaseInvoiceItem {
+  id          Int      @id @default(autoincrement())
+  invoiceId   Int
+  invoice     PurchaseInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id])
+  barcode     String   @default("")
+  productName String
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+
+  @@index([invoiceId])
+  @@index([productId])
 }
 
 model TenantWhatsAppConfig {
