@@ -149,7 +149,7 @@ export class InstagramController {
           }
         }
 
-        const isImage = !!(msg?.attachments?.length && msg.attachments.some(a => a.type === 'image'))
+        const isImage = !!(msg?.attachments?.length && msg.attachments.some((a: any) => a.type === 'image'))
         const displayContent = isImage ? ('📷 ' + (msgText || 'Resim')) : (msgText || '(mesaj)')
         await this.messagesService.create({
           platform: 'instagram',
@@ -192,10 +192,9 @@ export class InstagramController {
             if (!reply) reply = 'Görseliniz alındı, en kısa sürede dönüş yapılacaktır.'
 
             await this.instagramService.sendMessage(tenantId, senderId, reply)
-              await this.messagesService.create({
-                platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing', status: 'sent',
-              }).catch(() => {})
-            }
+            await this.messagesService.create({
+              platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing', status: 'sent',
+            }).catch(() => {})
           } catch (e) {
             console.error('Instagram AI reply error:', e)
           }
