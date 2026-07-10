@@ -175,15 +175,14 @@ export class WebchatService {
     if (!this.aiApiKey) return null
     const baseSystem = this.buildBaseSystem()
     const logoInfo = this.config.logoUrl ? `${this.config.businessName} logosu: ${this.config.logoDescription || 'Yuklenmis logo var'}. Kullanici bu logoyu gonderirse "Bu bizim logomuz" diyebilirsin.` : ''
+    const userMsg = (text || 'Bu gorseli analiz et ve acikla.')
+    const dataUri = `data:${imageMime};base64,${imageBase64}`
     const systemContent = baseSystem + '\n\n!!! COK ONEMLI GORSEL ANALIZI TALIMATI - ASAGIDAKILER HER SEYDEN ONCE GELIR !!!\nGorsel analizi yapabiliyorsun. Kullanici bir gorsel gonderdiginde:\n1. Gorseli DETAYLI incele, icinde ne varsa anlat (nesneler, renkler, yazi, kisi, urun, mekan, logo vb).\n2. "Bu konuda bilgim yok", "gorsel analizi yapamiyorum", "size yardimci olamiyorum" gibi seyleri KESINLIKLE SOYLEME.\n3. Emin degilsen "Bu goruntude ... goruyorum" diyerek acikla.\n4. Urun, logo, menu, fatura, kartvizit vb taniyorsan adini soyle.\n5. KESINLIKLE her gorsele "bu bizim logomuz" deme. Sadece gercekten eslesiyorsa soyle.\n' + (logoInfo ? '\n' + logoInfo : '') + '\n!!! GORSEL ANALIZI TALIMATI SONU !!!'
     const body = JSON.stringify({
       model: this.aiModel,
       messages: [
         { role: 'system', content: systemContent },
-        { role: 'user', content: [
-          { type: 'text', text: text || 'Bu gorseli analiz et ve acikla.' },
-          { type: 'image_url', image_url: { url: `data:${imageMime};base64,${imageBase64}` } },
-        ]},
+        { role: 'user', content: `![image](${dataUri})\n${userMsg}` },
       ],
       temperature: 0,
       max_tokens: 800,
