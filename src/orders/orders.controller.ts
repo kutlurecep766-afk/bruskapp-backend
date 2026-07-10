@@ -47,8 +47,10 @@ export class OrdersController {
       waiterId: body.waiterId ?? null,
     })
 
-    this.orderQueue.add('send-invoice', body).catch(e => this.logger.warn('Queue invoice hatasi: ' + e.message))
-    this.orderQueue.add('send-notification', body).catch(e => this.logger.warn('Queue notification hatasi: ' + e.message))
+    if (body.customerName !== 'Test') {
+      this.orderQueue.add('send-invoice', body).catch(e => this.logger.warn('Queue invoice hatasi: ' + e.message))
+      this.orderQueue.add('send-notification', body).catch(e => this.logger.warn('Queue notification hatasi: ' + e.message))
+    }
 
     this.logger.log('Yeni siparis: ' + order.id + ' - ' + body.customerName + ' (' + body.platform + ')')
     return order
