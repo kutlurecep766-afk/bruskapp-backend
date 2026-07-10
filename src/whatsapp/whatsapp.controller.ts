@@ -178,24 +178,19 @@ export class WhatsappController {
     for (const msg of messages) {
       if (msg.direction === 'send') continue // skip echoes
 
-      if (!msg.text?.body) continue // sadece text mesajlari kaydet
+      if (!msg.text?.body) continue
 
       const text = msg.text.body
       const from = msg.from || 'unknown'
-      const msgReceivedAt = Date.now()
 
       await this.messagesService.create({
         platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
-      // AI auto-reply (sadece text mesajlari)
-      if (msg.text?.body && !this.whatsappService.isAiPaused(tenantId, from)) {
+      // AI auto-reply
+      if (!this.whatsappService.isAiPaused(tenantId, from)) {
         ;(async () => {
           try {
-            const elapsed = Date.now() - msgReceivedAt
-            const minWait = 1500
-            if (elapsed < minWait) await new Promise(r => setTimeout(r, minWait - elapsed))
-
             const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
             const feats = (tenantData?.features as any) || {}
             if (feats.aiAutoReply === false) return
@@ -211,13 +206,13 @@ export class WhatsappController {
               if (monthCount >= limit) return
             }
 
+            // markAsRead + typing (Meta standart bilesik istek)
             if (msg.id) {
               this.whatsappService.markAsRead(tenantId, msg.id, true)
             }
 
             const reply = await this.webchatService.generateResponse(text)
             if (reply && msg.id) {
-              await new Promise(r => setTimeout(r, 1500))
               const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
               const aiMsgId = sendResult.messageId
               await this.messagesService.create({
