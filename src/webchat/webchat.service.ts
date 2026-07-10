@@ -175,7 +175,7 @@ export class WebchatService {
     if (!this.aiApiKey) return null
     const baseSystem = this.buildBaseSystem()
     const logoInfo = this.config.logoUrl ? `${this.config.businessName} logosu: ${this.config.logoDescription || 'Yuklenmis logo var'}. Kullanici bu logoyu gonderirse "Bu bizim logomuz" diyebilirsin.` : ''
-    const systemContent = baseSystem + '\n\nGORSEL ANALIZI KURALLARI:\n- Gonderilen gorseli nesnel olarak analiz et, ne goruyorsan onu soyle.\n- KESINLIKLE her gorsele "bu bizim logomuz" deme. Sadece gercekten eslesiyorsa soyle.\n- Urun, menu, mekan fotografi gibi seyleri tanimla, markaya ait oldugunu varsayma.\n- Bilmiyorsan "Bu gorseli tam olarak tanimlayamiyorum" de.\n' + (logoInfo ? '\n' + logoInfo : '')
+    const systemContent = baseSystem + '\n\nGORSEL ANALIZI KURALLARI:\n- Gonderilen gorseli DETAYLI analiz et. Ne goruyorsan acikla: nesneler, renkler, yazi, ortam, kisi varsa ne yapiyor, urun varsa ne urunu.\n- Kullanici "bu nedir" veya "ne goruyorsun" gibi bir sey sorduysa, gorselde ne oldugunu anlat. "Bilmiyorum" veya "tanimlayamiyorum" deme.\n- Gorselde urun, yemek, menu, mekan, insan, belge, ekran goruntusu vb varsa tanimla.\n- KESINLIKLE her gorsele "bu bizim logomuz" deme. Sadece gercekten eslesiyorsa soyle.\n- Marka veya urun taniyorsan soyle, emin degilsen "Bu goruntude ... goruyorum" seklinde acikla.\n' + (logoInfo ? '\n' + logoInfo : '')
     const body = JSON.stringify({
       model: this.aiModel,
       messages: [
