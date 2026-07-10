@@ -31,6 +31,7 @@ import { EInvoiceModule } from './einvoice/einvoice.module'
 import { YemeksepetiModule } from './yemeksepeti/yemeksepeti.module'
 import { MarketplaceModule } from './marketplace/marketplace.module'
 import { EncryptionModule } from './common/encryption.module'
+import { QueuesModule } from './queues/queues.module'
 
 @Global()
 @Module({
@@ -63,7 +64,7 @@ import { EncryptionModule } from './common/encryption.module'
     KargomucuzModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,
     MarketplaceModule,
-    EncryptionModule,
+    EncryptionModule, QueuesModule,
   ],
   controllers: [AppController],
   providers: [

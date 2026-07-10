@@ -1,9 +1,9 @@
 import { Controller, Get, Post, Param, Body, Query, Logger, BadRequestException } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
+import { InjectQueue } from '@nestjs/bullmq'
+import { Queue } from 'bullmq'
 import { Public } from '../auth/public.decorator'
 import { OrdersService } from './orders.service'
-import { NotificationsService } from '../notifications/notifications.service'
-import { EInvoiceService } from '../einvoice/einvoice.service'
 
 @SkipThrottle()
 @Controller('orders')
@@ -12,8 +12,7 @@ export class OrdersController {
 
   constructor(
     private ordersService: OrdersService,
-    private notificationsService: NotificationsService,
-    private einvoiceService: EInvoiceService,
+    @InjectQueue('order-processing') private orderQueue: Queue,
   ) {}
 
   @Public()
@@ -48,43 +47,11 @@ export class OrdersController {
       waiterId: body.waiterId ?? null,
     })
 
-    this.autoSendInvoice(body).catch(e => this.logger.warn('Otomatik fatura kesilemedi: ' + e.message))
-
-    await this.notificationsService.createNotification(
-      body.platform,
-      'Yeni Siparis',
-      body.platform + ' uzerinden ' + body.customerName + ' tarafindan ' + body.totalAmount + ' ' + (body.currency || 'TRY') + ' tutarinda siparis verildi'
-    )
+    this.orderQueue.add('send-invoice', body).catch(e => this.logger.warn('Queue invoice hatasi: ' + e.message))
+    this.orderQueue.add('send-notification', body).catch(e => this.logger.warn('Queue notification hatasi: ' + e.message))
 
     this.logger.log('Yeni siparis: ' + order.id + ' - ' + body.customerName + ' (' + body.platform + ')')
     return order
-  }
-
-  private async autoSendInvoice(body: any) {
-    const vkn = body.customerVkn || body.customerTckn
-    if (!vkn || !body.products?.length) return
-    const result = await this.einvoiceService.sendInvoice(body.tenantId, {
-      type: undefined as any,
-      customer: {
-        name: body.customerName,
-        vkn: body.customerVkn,
-        tckn: body.customerTckn,
-        email: body.customerEmail,
-        phone: body.customerPhone,
-        address: body.customerAddress,
-        taxOffice: body.customerTaxOffice,
-      },
-      lines: body.products.map((p: any) => ({
-        name: p.name || p.title || 'Urun',
-        quantity: p.quantity || 1,
-        unitPrice: p.price || p.unitPrice || 0,
-        vatRate: p.vatRate ?? 20,
-      })),
-      description: body.note || 'Siparis ' + body.platform,
-    })
-    if (result.success) {
-      this.logger.log('Fatura otomatik kesildi: ' + result.invoiceNumber + ' - siparis: ' + body.platform)
-    }
   }
 
   @Public()
