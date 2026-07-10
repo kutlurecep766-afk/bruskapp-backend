@@ -83,6 +83,27 @@ export class ProductsService {
     return this.stockMovementsService.create({ tenantId, productId, type, quantity, note, createdById })
   }
 
+  // Variant CRUD
+  async createVariant(productId: number, data: {
+    name: string; barcode?: string; price?: number; stock?: number; options?: string[]; images?: string[]
+  }) {
+    return this.prisma.productVariant.create({
+      data: { productId, name: data.name, barcode: data.barcode || '', price: data.price, stock: data.stock ?? 0, options: data.options || [], images: data.images || [] },
+    })
+  }
+
+  async getVariants(productId: number) {
+    return this.prisma.productVariant.findMany({ where: { productId }, orderBy: { createdAt: 'asc' } })
+  }
+
+  async updateVariant(variantId: number, data: any) {
+    return this.prisma.productVariant.update({ where: { id: variantId }, data })
+  }
+
+  async deleteVariant(variantId: number) {
+    return this.prisma.productVariant.delete({ where: { id: variantId } })
+  }
+
   async remove(id: number) {
     return this.prisma.product.delete({ where: { id } })
   }
