@@ -185,9 +185,9 @@ export class WhatsappController {
         platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
-      // TEK istek: okundu + typing indicator birlikte
+      // TEK istek: okundu + typing indicator birlikte (beklemeden)
       if (msg.id) {
-        await this.whatsappService.markAsRead(tenantId, msg.id, true)
+        this.whatsappService.markAsRead(tenantId, msg.id, true)
       }
 
       // AI auto-reply
