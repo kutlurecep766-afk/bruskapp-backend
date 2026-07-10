@@ -185,9 +185,9 @@ export class WhatsappController {
         platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
-      // Tek istek: okundu + typing indicator (Meta dokumanindaki gibi)
+      // okundu bilgisi (typing yok)
       if (msg.id) {
-        this.whatsappService.markAsRead(tenantId, msg.id, true)
+        this.whatsappService.markAsRead(tenantId, msg.id, false)
       }
 
       // AI auto-reply
@@ -210,7 +210,10 @@ export class WhatsappController {
 
           const reply = await this.webchatService.generateResponse(text)
 
-          if (reply) {
+          if (reply && msg.id) {
+            // cevap gelince typing goster, sonra mesaji gonder
+            this.whatsappService.markAsRead(tenantId, msg.id, true)
+            await new Promise(r => setTimeout(r, 1500))
             const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
             const aiMsgId = sendResult.messageId
             await this.messagesService.create({
