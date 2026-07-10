@@ -178,7 +178,9 @@ export class WhatsappController {
     for (const msg of messages) {
       if (msg.direction === 'send') continue // skip echoes
 
-      const text = msg.text?.body || '(media)'
+      if (!msg.text?.body) continue // sadece text mesajlari kaydet
+
+      const text = msg.text.body
       const from = msg.from || 'unknown'
       const msgReceivedAt = Date.now()
 
