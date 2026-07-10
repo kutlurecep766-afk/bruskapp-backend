@@ -1,4 +1,8 @@
-import { Controller, Post, Get, Put, Body, Req } from '@nestjs/common'
+import { Controller, Post, Get, Put, Body, Req, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common'
+import { FileInterceptor } from '@nestjs/platform-express'
+import { diskStorage } from 'multer'
+import * as path from 'path'
+import * as fs from 'fs'
 import { WebchatService, ChatBotConfig } from './webchat.service'
 import { Public } from '../auth/public.decorator'
 import { WebchatMessageDto } from './webchat.dto'
@@ -37,5 +41,26 @@ export class WebchatController {
   @Put('config')
   async updateConfig(@Body() body: Partial<ChatBotConfig>): Promise<ChatBotConfig> {
     return this.webchat.updateConfig(body)
+  }
+
+  @Post('logo')
+  @UseInterceptors(FileInterceptor('file', {
+    storage: diskStorage({
+      destination: path.join(process.cwd(), 'data', 'uploads'),
+      filename: (req, file, cb) => cb(null, 'chatbot-logo' + path.extname(file.originalname)),
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+      if (!file.mimetype.startsWith('image/')) cb(new BadRequestException('Sadece resim dosyalari'), false)
+      else cb(null, true)
+    },
+  }))
+  async uploadLogo(@Req() req: any, @UploadedFile() file: any) {
+    if (!file) throw new BadRequestException('Dosya gerekli')
+    const proto = req.headers['x-forwarded-proto'] || 'https'
+    const host = req.get('host') || 'bruskapp.com'
+    const logoUrl = `${proto}://${host}/api/uploads/chatbot-logo${path.extname(file.originalname)}`
+    this.webchat.updateConfig({ logoUrl })
+    return { success: true, logoUrl }
   }
 }

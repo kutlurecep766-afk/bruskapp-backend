@@ -26,6 +26,8 @@ export interface ChatBotConfig {
   faqs: FAQ[]
   systemPrompt: string
   knowledgeBase: string
+  logoUrl: string
+  logoDescription: string
 }
 
 interface Message {
@@ -62,6 +64,8 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   faqs: [],
   systemPrompt: '',
   knowledgeBase: ''
+  logoUrl: ''
+  logoDescription: ''
 }
 
 @Injectable()
@@ -105,6 +109,12 @@ export class WebchatService {
 
 
   updateConfig(updates: Partial<ChatBotConfig>): ChatBotConfig {
+    const protectedKeys = ['knowledgeBase', 'logoUrl', 'logoDescription']
+    for (const key of protectedKeys) {
+      if (!(key in updates)) {
+        (updates as any)[key] = (this.config as any)[key]
+      }
+    }
     this.config = { ...this.config, ...updates }
     this.saveConfig()
     return this.getConfig()
@@ -163,7 +173,9 @@ export class WebchatService {
 
   async generateMultimodalResponse(text: string, imageBase64: string, imageMime: string): Promise<string | null> {
     if (!this.aiApiKey) return null
-    const systemContent = this.buildBaseSystem()
+    const baseSystem = this.buildBaseSystem()
+    const logoInfo = this.config.logoUrl ? `${this.config.businessName} logosu: ${this.config.logoDescription || 'Yuklenmis logo var'}. Kullanici bu logoyu gonderirse "Bu bizim logomuz" diyebilirsin.` : ''
+    const systemContent = baseSystem + '\n\nGORSEL ANALIZI KURALLARI:\n- Gonderilen gorseli nesnel olarak analiz et, ne goruyorsan onu soyle.\n- KESINLIKLE her gorsele "bu bizim logomuz" deme. Sadece gercekten eslesiyorsa soyle.\n- Urun, menu, mekan fotografi gibi seyleri tanimla, markaya ait oldugunu varsayma.\n- Bilmiyorsan "Bu gorseli tam olarak tanimlayamiyorum" de.\n' + (logoInfo ? '\n' + logoInfo : '')
     const body = JSON.stringify({
       model: this.aiModel,
       messages: [
