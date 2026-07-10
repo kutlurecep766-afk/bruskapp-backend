@@ -180,11 +180,14 @@ export class WhatsappController {
 
       const text = msg.text?.body || msg.image?.caption || ''
       const from = msg.from || 'unknown'
+      const msgReceivedAt = Date.now()
 
       // Eger image mesajiysa medyayi indir
       let imageBase64: string | undefined
       let imageMime: string | undefined
+      let imageId: string | undefined
       if (msg.type === 'image' && msg.image?.id) {
+        imageId = msg.image.id
         const media = await this.whatsappService.downloadMedia(tenantId, msg.image.id)
         if (media) {
           imageBase64 = media.base64
@@ -192,18 +195,20 @@ export class WhatsappController {
         }
       }
 
-      const isImage = !!(msg.type === 'image' && msg.image?.id)
-      const displayContent = isImage ? ('📷 ' + (text || 'Resim')) : text
+      const isImage = !!imageId
+      const displayContent = isImage ? ('📷 ' + (text || 'Resim') + (imageId ? ' (ID: ' + imageId + ')' : '')) : text
       await this.messagesService.create({
         platform: 'whatsapp', from, content: displayContent, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
       // AI auto-reply
       if (!this.whatsappService.isAiPaused(tenantId, from)) {
-        (async () => {
+        ;(async () => {
           try {
-            // 600ms bekle - WhatsApp client'in mesaji islemesine izin ver
-            await new Promise(r => setTimeout(r, 600))
+            // Mesaj gelisinden itibaren minimum 1.5sn bekle (WhatsApp client'in mesaji islemesi icin)
+            const elapsed = Date.now() - msgReceivedAt
+            const minWait = 1500
+            if (elapsed < minWait) await new Promise(r => setTimeout(r, minWait - elapsed))
 
             const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
             const feats = (tenantData?.features as any) || {}
