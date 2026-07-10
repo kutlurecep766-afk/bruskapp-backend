@@ -63,9 +63,9 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   products: [],
   faqs: [],
   systemPrompt: '',
-  knowledgeBase: ''
-  logoUrl: ''
-  logoDescription: ''
+  knowledgeBase: '',
+  logoUrl: '',
+  logoDescription: '',
 }
 
 @Injectable()
