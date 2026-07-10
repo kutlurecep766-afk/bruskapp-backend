@@ -26,8 +26,6 @@ export interface ChatBotConfig {
   faqs: FAQ[]
   systemPrompt: string
   knowledgeBase: string
-  logoUrl: string
-  logoDescription: string
 }
 
 interface Message {
@@ -64,8 +62,6 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   faqs: [],
   systemPrompt: '',
   knowledgeBase: '',
-  logoUrl: '',
-  logoDescription: '',
 }
 
 @Injectable()
@@ -109,7 +105,7 @@ export class WebchatService {
 
 
   updateConfig(updates: Partial<ChatBotConfig>): ChatBotConfig {
-    const protectedKeys = ['knowledgeBase', 'logoUrl', 'logoDescription']
+    const protectedKeys = ['knowledgeBase']
     for (const key of protectedKeys) {
       if (!(key in updates)) {
         (updates as any)[key] = (this.config as any)[key]
@@ -169,49 +165,6 @@ export class WebchatService {
     clean = clean.replace(/\uFFFD/g, '')
     clean = clean.trim()
     return clean
-  }
-
-  async generateMultimodalResponse(text: string, imageBase64: string, imageMime: string): Promise<string | null> {
-    if (!this.aiApiKey) return null
-    const logoInfo = this.config.logoUrl ? `${this.config.businessName} logosu: ${this.config.logoDescription || 'Yuklenmis logo var'}. Kullanici bu logoyu gonderirse "Bu bizim logomuz" diyebilirsin.` : ''
-    const userMsg = (text || 'Bu gorseli analiz et ve acikla.')
-    const systemContent = 'Sen bir gorsel analiz asistanisin. HIP BIR ISLETMEYE AIT DEGILSIN. Kullanici bir gorsel gonderdiginde:\n1. Gorselde ne goruyorsan SADECE onu anlat. Hicbir yorum, hikaye, marka, isletme adi EKLEME.\n2. ORNEK: "Bu goruntude siyah bir ayakkabi gorunuyor, beyaz tabanli."\n3. Gorsel analizi disINDA hicbir seyden bahsetme. Marka, sirket, web sitesi gormuyorsan adini anma.\n4. Kisa ve oz anlat. Uzun betimleme yapma.\n5. "Bilmiyorum", "analiz yapamiyorum" KESINLIKLE SOYLEME.\n6. Emin degilsen "Bu goruntude ... goruyorum" de.\n' + (logoInfo ? '\n' + logoInfo : '')
-    // Gorseli gecici dosyaya yaz ve URL olarak kullan
-    const uploadDir = path.join(process.cwd(), 'data', 'uploads')
-    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
-    const imgFileName = 'vision-' + Date.now() + '.jpg'
-    const imgPath = path.join(uploadDir, imgFileName)
-    fs.writeFileSync(imgPath, Buffer.from(imageBase64, 'base64'))
-    const imageUrl = 'https://bruskapp.com/api/uploads/' + imgFileName
-    const body = JSON.stringify({
-      model: this.aiModel,
-      messages: [
-        { role: 'system', content: systemContent },
-        { role: 'user', content: `Gorsel: ![image](${imageUrl})\n\nSoru: ${userMsg}` },
-      ],
-      temperature: 0,
-      max_tokens: 800,
-    })
-    try {
-      const controller = new AbortController()
-      const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT)
-      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.aiApiKey}` },
-        body, signal: controller.signal,
-      })
-      clearTimeout(timeout)
-      if (!res.ok) { const e = await res.text(); console.error('AI multimodal error:', res.status, e); return null }
-      const data = await res.json()
-      const content = data.choices?.[0]?.message?.content || null
-      if (!content) return null
-      const sanitized = this.sanitizeResponse(content)
-      if (this.checkHarmful(sanitized)) return 'Bu konuda size yardımcı olamıyorum.'
-      return sanitized
-    } catch (e: any) {
-      if (e?.name !== 'AbortError') console.error('AI multimodal exception:', e)
-      return null
-    }
   }
 
   async processMessage(sessionId: string, message: string, clientIp = ''): Promise<string> {

@@ -121,7 +121,7 @@ export class InstagramController {
       for (const event of messaging) {
         const senderId = event.sender?.id
         const msg = event.message
-        if (!senderId || (!msg?.text && !msg?.attachments)) continue
+        if (!senderId || !msg?.text) continue
 
         // skip echoes (messages we sent ourselves)
         if (msg.is_echo) continue
@@ -129,32 +129,10 @@ export class InstagramController {
         // fetch username
         const username = await this.instagramService.getUsername(tenantId, senderId).catch(() => null)
 
-        // Extract text and image
-        const msgText = msg?.text || ''
-        let imageBase64: string | undefined
-        let imageMime: string | undefined
-        if (msg?.attachments?.length) {
-          for (const att of msg.attachments) {
-            if (att.type === 'image' && att.payload?.url) {
-              try {
-                const res = await fetch(att.payload.url)
-                if (res.ok) {
-                  const buf = Buffer.from(await res.arrayBuffer())
-                  imageBase64 = buf.toString('base64')
-                  imageMime = res.headers.get('content-type') || 'image/jpeg'
-                }
-              } catch {}
-              break
-            }
-          }
-        }
-
-        const isImage = !!(msg?.attachments?.length && msg.attachments.some((a: any) => a.type === 'image'))
-        const displayContent = isImage ? ('📷 ' + (msgText || 'Resim')) : (msgText || '(mesaj)')
         await this.messagesService.create({
           platform: 'instagram',
           from: senderId,
-          content: displayContent,
+          content: msg.text,
           messageId: msg.mid || Date.now().toString(),
           tenantId,
           direction: 'incoming',
@@ -179,22 +157,13 @@ export class InstagramController {
               if (monthCount >= limit) continue
             }
 
-            let reply: string | null = null
-            if (imageBase64) {
-              reply = await this.webchatService.generateMultimodalResponse(msgText, imageBase64, imageMime!)
-              if (!reply && msgText) {
-                reply = await this.webchatService.generateResponse(msgText)
-              }
-            } else if (msgText) {
-              reply = await this.webchatService.generateResponse(msgText)
+            const reply = await this.webchatService.generateResponse(msg.text)
+            if (reply) {
+              await this.instagramService.sendMessage(tenantId, senderId, reply)
+              await this.messagesService.create({
+                platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing', status: 'sent',
+              }).catch(() => {})
             }
-
-            if (!reply) reply = 'Görseliniz alındı, en kısa sürede dönüş yapılacaktır.'
-
-            await this.instagramService.sendMessage(tenantId, senderId, reply)
-            await this.messagesService.create({
-              platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing', status: 'sent',
-            }).catch(() => {})
           } catch (e) {
             console.error('Instagram AI reply error:', e)
           }

@@ -178,34 +178,18 @@ export class WhatsappController {
     for (const msg of messages) {
       if (msg.direction === 'send') continue // skip echoes
 
-      const text = msg.text?.body || msg.image?.caption || ''
+      const text = msg.text?.body || '(media)'
       const from = msg.from || 'unknown'
       const msgReceivedAt = Date.now()
 
-      // Eger image mesajiysa medyayi indir
-      let imageBase64: string | undefined
-      let imageMime: string | undefined
-      let imageId: string | undefined
-      if (msg.type === 'image' && msg.image?.id) {
-        imageId = msg.image.id
-        const media = await this.whatsappService.downloadMedia(tenantId, msg.image.id)
-        if (media) {
-          imageBase64 = media.base64
-          imageMime = media.mimeType
-        }
-      }
-
-      const isImage = !!imageId
-      const displayContent = isImage ? ('📷 ' + (text || 'Resim') + (imageId ? ' (ID: ' + imageId + ')' : '')) : text
       await this.messagesService.create({
-        platform: 'whatsapp', from, content: displayContent, messageId: msg.id, tenantId, direction: 'incoming',
+        platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
-      // AI auto-reply
-      if (!this.whatsappService.isAiPaused(tenantId, from)) {
+      // AI auto-reply (sadece text mesajlari)
+      if (msg.text?.body && !this.whatsappService.isAiPaused(tenantId, from)) {
         ;(async () => {
           try {
-            // Mesaj gelisinden itibaren minimum 1.5sn bekle (WhatsApp client'in mesaji islemesi icin)
             const elapsed = Date.now() - msgReceivedAt
             const minWait = 1500
             if (elapsed < minWait) await new Promise(r => setTimeout(r, minWait - elapsed))
@@ -225,25 +209,12 @@ export class WhatsappController {
               if (monthCount >= limit) return
             }
 
-            // Typing + read gonder (beklemeden once, client rahatladi)
             if (msg.id) {
               this.whatsappService.markAsRead(tenantId, msg.id, true)
             }
 
-            let reply: string | null = null
-            if (imageBase64) {
-              reply = await this.webchatService.generateMultimodalResponse(text, imageBase64, imageMime!)
-              // multimodal basarisiz olursa text-only dene
-              if (!reply && text) {
-                reply = await this.webchatService.generateResponse(text)
-              }
-            } else if (text) {
-              reply = await this.webchatService.generateResponse(text)
-            }
-
-            if (!reply) reply = 'Görseliniz alındı, en kısa sürede dönüş yapılacaktır.'
-
-            if (msg.id) {
+            const reply = await this.webchatService.generateResponse(text)
+            if (reply && msg.id) {
               await new Promise(r => setTimeout(r, 1500))
               const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
               const aiMsgId = sendResult.messageId
