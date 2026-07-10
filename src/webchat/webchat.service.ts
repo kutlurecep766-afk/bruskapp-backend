@@ -389,45 +389,18 @@ export class WebchatService {
       conv = { messages: [], lastActivity: Date.now() }
       conv.messages.push({ role: 'user', content: message })
     }
-    // Anti-timing: constant small delay to prevent timing attacks
-    await new Promise(r => setTimeout(r, 30 + Math.random() * 40))
     const lower = message.toLowerCase().trim()
 
-    // Pre-check: if asking about a product not in config, redirect
-    const productNames = this.config.products.map(p => p.name.toLowerCase())
-    const askFiyat = this.hasAnyWord(lower, ['fiyat', 'kac para', 'ne kadar', 'ucret', 'tl', 'lira'])
-    if (askFiyat && productNames.length > 0) {
-      const matchingProduct = productNames.find(n => lower.includes(n) || lower.split(/\s+/).some((w:string) => w.length >= 3 && n.includes(w)))
-      if (!matchingProduct) {
-        return 'Bu konuda bilgim yok. İsterseniz sizi uzman ekibimize yönlendirelim, size özel bilgi versinler.'
-      }
-    }
-
+    // Once AI dene
     const aiResponse = await this.callAI(conv.messages)
-    if (aiResponse) {
-      if (askFiyat && productNames.length > 0) {
-        const priceMatch = aiResponse.match(/(\d+)\s*(TL|lira)/i)
-        if (priceMatch) {
-          const num = priceMatch[1]
-          const valid = this.config.products.some(p => p.price && p.price.includes(num))
-          if (!valid) {
-            const p = productNames.find(n => lower.includes(n))
-            const prod = p ? this.config.products.find(px => px.name.toLowerCase() === p) : null
-            if (prod) return prod.name + ' paketimiz ' + prod.price + '. Detayli bilgi icin bize ulasabilirsiniz.'
-            return 'Bu konuda doğru fiyat bilgisi veremiyorum. Size uzman ekibimiz yardımcı olsun mu?'
-          }
-        }
-      }
-      return aiResponse
-    }
+    if (aiResponse) return aiResponse
 
+    // AI yoksa fallback
     for (const faq of this.config.faqs) {
       const q = faq.question.toLowerCase()
       const qWords = q.split(/\s+/).filter((w: string) => w.length > 2)
       const matched = qWords.filter((w: string) => lower.includes(w))
-      if (matched.length >= Math.ceil(qWords.length * 0.6)) {
-        return faq.answer
-      }
+      if (matched.length >= Math.ceil(qWords.length * 0.6)) return faq.answer
     }
 
     const matchedProducts = this.config.products.filter(p => {
@@ -439,36 +412,22 @@ export class WebchatService {
       return this.config.welcomeMessage
     }
 
-    if (matchedProducts.length === 1 && this.hasAnyWord(lower, ['fiyat', 'kac para', 'ne kadar', 'ucret', 'odeme', 'taksit', 'aylik', 'yillik'])) {
+    if (matchedProducts.length >= 1 && this.hasAnyWord(lower, ['fiyat', 'kac para', 'ne kadar', 'ucret'])) {
       const p = matchedProducts[0]
-      return `${p.name} paketimiz ${p.price}. ${p.description}. Detayli bilgi almak icin size yardimci olabilirim.`
+      return `${p.name} paketimiz ${p.price}. Detayli bilgi icin bize ulasabilirsiniz.`
     }
 
     if (matchedProducts.length === 1) {
       const p = matchedProducts[0]
-      return `${p.name}: ${p.description} — ${p.price}. Bu paketimiz hakkinda daha fazla bilgi almak ister misiniz?`
+      return `${p.name}: ${p.description} — ${p.price}.`
     }
 
-    if (this.hasAnyWord(lower, ['fiyat', 'kac para', 'ne kadar', 'ucret', 'urun', 'hizmet', 'cozum', 'paket', 'ne var', 'neler var', 'ne yapiyor'])) {
-      if (this.config.products.length === 0) return 'Detaylı bilgi için iletişime geçebilirsiniz.'
-      const list = this.config.products.map(p => `- ${p.name}: ${p.description} (${p.price})`).join('\n')
-      return `Sundugumuz cozumler:\n${list}\n\nHangisi hakkinda bilgi almak istersiniz?`
-    }
-
-    if (matchedProducts.length > 1) {
-      return `Birkac urun buldum: ${matchedProducts.map(p => p.name).join(', ')}. Hangisi hakkinda bilgi almak istersiniz?`
-    }
-
-    if (this.hasAnyWord(lower, ['adres', 'nerede', 'konum', 'telefon', 'arama', 'iletisim', 'ulas', 'email', 'mail'])) {
+    if (this.hasAnyWord(lower, ['adres', 'nerede', 'konum', 'telefon', 'iletisim', 'ulas', 'email', 'mail'])) {
       return `Bize ulasin:\nE-posta: ${this.config.email}\nAdres: ${this.config.address}\nCalisma saatleri: ${this.config.hours}`
     }
 
-    if (this.hasAnyWord(lower, ['saat', 'mesai', 'calisma', 'acilis', 'kapanis'])) {
-      return `Calisma saatlerimiz: ${this.config.hours}`
-    }
-
     if (this.hasAnyWord(lower, ['tesekkur', 'sagol', 'eyvallah', 'tamamdir', 'anladim'])) {
-      return 'Rica ederim! Başka bir sorunuz olursa yine beklerim.'
+      return 'Rica ederim!'
     }
 
     return this.config.welcomeMessage
