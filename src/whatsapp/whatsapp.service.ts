@@ -173,7 +173,6 @@ export class WhatsappService {
       return { success: false, message: `Profil hatasi: ${e?.response?.data?.error?.message || e.message}` }
     }
   }
-  }
 
   async updateProfile(tenantId: string, profile: { about?: string; description?: string; email?: string; websites?: string[] }) {
     return { success: false, message: 'WhatsApp Cloud API profil guncellemeyi desteklemez. Lutfen Meta panelinden guncelleyin: https://business.facebook.com/wa/manage' }
