@@ -225,7 +225,7 @@ export class WhatsappController {
             }
 
             const reply = imageBase64
-              ? await this.webchatService.generateMultimodalResponse(text, imageBase64, imageMime)
+              ? await this.webchatService.generateMultimodalResponse(text, imageBase64, imageMime!)
               : text
                 ? await this.webchatService.generateResponse(text)
                 : null
