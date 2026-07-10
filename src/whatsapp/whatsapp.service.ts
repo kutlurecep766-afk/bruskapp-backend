@@ -143,20 +143,36 @@ export class WhatsappService {
   async getProfile(tenantId: string) {
     try {
       const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
-      const res = await lastValueFrom(
-        this.http.get(
-          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile?fields=about,description,email,websites,profile_picture_url,address`,
-          { headers: { Authorization: `Bearer ${accessToken}` } }
-        )
-      )
-      this.logger.log(`WhatsApp profile raw response: ${JSON.stringify(res.data)}`)
-      // Graph API returns { data: [{ about: ..., description: ..., id: ... }] }
-      const profileData = res.data?.data?.[0] || res.data
-      return { success: true, data: profileData }
+      const [profileRes, phoneRes] = await Promise.all([
+        lastValueFrom(
+          this.http.get(
+            `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/whatsapp_business_profile?fields=about,description,email,websites,profile_picture_url,address`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          )
+        ),
+        lastValueFrom(
+          this.http.get(
+            `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}?fields=verified_name,name_status,display_phone_number`,
+            { headers: { Authorization: `Bearer ${accessToken}` } }
+          )
+        ),
+      ])
+      const profileData = profileRes.data?.data?.[0] || profileRes.data
+      const phoneInfo = phoneRes.data || {}
+      return {
+        success: true,
+        data: {
+          ...profileData,
+          verified_name: phoneInfo.verified_name,
+          name_status: phoneInfo.name_status,
+          display_phone_number: phoneInfo.display_phone_number,
+        },
+      }
     } catch (e: any) {
       this.logger.error(`WhatsApp profile fetch error: ${JSON.stringify(e?.response?.data) || e.message}`)
       return { success: false, message: `Profil hatasi: ${e?.response?.data?.error?.message || e.message}` }
     }
+  }
   }
 
   async updateProfile(tenantId: string, profile: { about?: string; description?: string; email?: string; websites?: string[] }) {
