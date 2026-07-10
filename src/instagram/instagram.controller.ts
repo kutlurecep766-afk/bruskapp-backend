@@ -121,7 +121,7 @@ export class InstagramController {
       for (const event of messaging) {
         const senderId = event.sender?.id
         const msg = event.message
-        if (!senderId || !msg?.text) continue
+        if (!senderId || (!msg?.text && !msg?.attachments)) continue
 
         // skip echoes (messages we sent ourselves)
         if (msg.is_echo) continue
@@ -129,10 +129,31 @@ export class InstagramController {
         // fetch username
         const username = await this.instagramService.getUsername(tenantId, senderId).catch(() => null)
 
+        // Extract text and image
+        const msgText = msg?.text || ''
+        let imageBase64: string | undefined
+        let imageMime: string | undefined
+        if (msg?.attachments?.length) {
+          for (const att of msg.attachments) {
+            if (att.type === 'image' && att.payload?.url) {
+              try {
+                const res = await fetch(att.payload.url)
+                if (res.ok) {
+                  const buf = Buffer.from(await res.arrayBuffer())
+                  imageBase64 = buf.toString('base64')
+                  imageMime = res.headers.get('content-type') || 'image/jpeg'
+                }
+              } catch {}
+              break
+            }
+          }
+        }
+
+        const displayContent = msgText || '(media)'
         await this.messagesService.create({
           platform: 'instagram',
           from: senderId,
-          content: msg.text,
+          content: displayContent,
           messageId: msg.mid || Date.now().toString(),
           tenantId,
           direction: 'incoming',
@@ -157,7 +178,12 @@ export class InstagramController {
               if (monthCount >= limit) continue
             }
 
-            const reply = await this.webchatService.generateResponse(msg.text)
+            const reply = imageBase64
+              ? await this.webchatService.generateMultimodalResponse(msgText, imageBase64, imageMime!)
+              : msgText
+                ? await this.webchatService.generateResponse(msgText)
+                : null
+
             if (reply) {
               await this.instagramService.sendMessage(tenantId, senderId, reply)
               await this.messagesService.create({

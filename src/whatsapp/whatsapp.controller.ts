@@ -178,52 +178,71 @@ export class WhatsappController {
     for (const msg of messages) {
       if (msg.direction === 'send') continue // skip echoes
 
-      const text = msg.text?.body || '(media)'
+      const text = msg.text?.body || msg.image?.caption || ''
       const from = msg.from || 'unknown'
 
-      await this.messagesService.create({
-        platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
-      })
-
-      // okundu bilgisi (typing yok)
-      if (msg.id) {
-        this.whatsappService.markAsRead(tenantId, msg.id, false)
+      // Eger image mesajiysa medyayi indir
+      let imageBase64: string | undefined
+      let imageMime: string | undefined
+      if (msg.type === 'image' && msg.image?.id) {
+        const media = await this.whatsappService.downloadMedia(tenantId, msg.image.id)
+        if (media) {
+          imageBase64 = media.base64
+          imageMime = media.mimeType
+        }
       }
 
+      const displayContent = text || '(media)'
+      await this.messagesService.create({
+        platform: 'whatsapp', from, content: displayContent, messageId: msg.id, tenantId, direction: 'incoming',
+      })
+
       // AI auto-reply
-      if (msg.text?.body && !this.whatsappService.isAiPaused(tenantId, from)) {
-        try {
-          const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
-          const feats = (tenantData?.features as any) || {}
-          if (feats.aiAutoReply === false) continue
-          const limit = feats.messageLimit || 0
+      if (!this.whatsappService.isAiPaused(tenantId, from)) {
+        (async () => {
+          try {
+            // 600ms bekle - WhatsApp client'in mesaji islemesine izin ver
+            await new Promise(r => setTimeout(r, 600))
 
-          if (limit > 0) {
-            const startOfMonth = new Date()
-            startOfMonth.setDate(1)
-            startOfMonth.setHours(0, 0, 0, 0)
-            const monthCount = await this.prisma.message.count({
-              where: { tenantId, direction: 'outgoing', createdAt: { gte: startOfMonth } },
-            })
-            if (monthCount >= limit) continue
+            const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
+            const feats = (tenantData?.features as any) || {}
+            if (feats.aiAutoReply === false) return
+            const limit = feats.messageLimit || 0
+
+            if (limit > 0) {
+              const startOfMonth = new Date()
+              startOfMonth.setDate(1)
+              startOfMonth.setHours(0, 0, 0, 0)
+              const monthCount = await this.prisma.message.count({
+                where: { tenantId, direction: 'outgoing', createdAt: { gte: startOfMonth } },
+              })
+              if (monthCount >= limit) return
+            }
+
+            // Typing + read gonder (beklemeden once, client rahatladi)
+            if (msg.id) {
+              this.whatsappService.markAsRead(tenantId, msg.id, true)
+            }
+
+            const reply = imageBase64
+              ? await this.webchatService.generateMultimodalResponse(text, imageBase64, imageMime)
+              : text
+                ? await this.webchatService.generateResponse(text)
+                : null
+
+            if (reply && msg.id) {
+              await new Promise(r => setTimeout(r, 1500))
+              const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
+              const aiMsgId = sendResult.messageId
+              await this.messagesService.create({
+                platform: 'whatsapp', from, content: reply, tenantId, direction: 'outgoing',
+                messageId: aiMsgId, status: 'sent',
+              }).catch(() => {})
+            }
+          } catch (e) {
+            console.error('WhatsApp AI reply error:', e)
           }
-
-          const reply = await this.webchatService.generateResponse(text)
-
-          if (reply && msg.id) {
-            // cevap gelince typing goster, sonra mesaji gonder
-            this.whatsappService.markAsRead(tenantId, msg.id, true)
-            await new Promise(r => setTimeout(r, 1500))
-            const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
-            const aiMsgId = sendResult.messageId
-            await this.messagesService.create({
-              platform: 'whatsapp', from, content: reply, tenantId, direction: 'outgoing',
-              messageId: aiMsgId, status: 'sent',
-            }).catch(() => {})
-          }
-        } catch (e) {
-          console.error('WhatsApp AI reply error:', e)
-        }
+        })()
       }
     }
     return { status: 'ok' }

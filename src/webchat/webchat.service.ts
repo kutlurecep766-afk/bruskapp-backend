@@ -161,6 +161,43 @@ export class WebchatService {
     return clean
   }
 
+  async generateMultimodalResponse(text: string, imageBase64: string, imageMime: string): Promise<string | null> {
+    if (!this.aiApiKey) return null
+    const systemContent = this.buildBaseSystem()
+    const body = JSON.stringify({
+      model: this.aiModel,
+      messages: [
+        { role: 'system', content: systemContent },
+        { role: 'user', content: [
+          { type: 'text', text: text || 'Bu gorseli analiz et ve acikla.' },
+          { type: 'image_url', image_url: { url: `data:${imageMime};base64,${imageBase64}` } },
+        ]},
+      ],
+      temperature: 0,
+      max_tokens: 400,
+    })
+    try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT)
+      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.aiApiKey}` },
+        body, signal: controller.signal,
+      })
+      clearTimeout(timeout)
+      if (!res.ok) { const e = await res.text(); console.error('AI multimodal error:', res.status, e); return null }
+      const data = await res.json()
+      const content = data.choices?.[0]?.message?.content || null
+      if (!content) return null
+      const sanitized = this.sanitizeResponse(content)
+      if (this.checkHarmful(sanitized)) return 'Bu konuda size yardımcı olamıyorum.'
+      return sanitized
+    } catch (e: any) {
+      if (e?.name !== 'AbortError') console.error('AI multimodal exception:', e)
+      return null
+    }
+  }
+
   async processMessage(sessionId: string, message: string, clientIp = ''): Promise<string> {
     if (!this.checkSessionRate(sessionId)) {
       return 'Çok fazla mesaj gönderdiniz. Lütfen biraz bekleyin.'

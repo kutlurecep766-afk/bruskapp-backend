@@ -93,6 +93,34 @@ export class WhatsappService {
     }
   }
 
+  async downloadMedia(tenantId: string, mediaId: string): Promise<{ base64: string; mimeType: string } | null> {
+    try {
+      const { accessToken } = await this.getCredentials(tenantId)
+      // Get media URL
+      const urlRes = await lastValueFrom(
+        this.http.get(`https://graph.facebook.com/${this.apiVersion}/${mediaId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        })
+      )
+      const mediaUrl = urlRes.data?.url
+      const mimeType = urlRes.data?.mime_type || 'image/jpeg'
+      if (!mediaUrl) return null
+
+      // Download media
+      const dlRes = await lastValueFrom(
+        this.http.get(mediaUrl, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          responseType: 'arraybuffer',
+        })
+      )
+      const buffer = Buffer.from(dlRes.data as ArrayBuffer)
+      return { base64: buffer.toString('base64'), mimeType }
+    } catch (e: any) {
+      this.logger.error(`Media download error: ${e?.message}`)
+      return null
+    }
+  }
+
   async markAsRead(tenantId: string, messageId: string, showTyping = false) {
     try {
       const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
