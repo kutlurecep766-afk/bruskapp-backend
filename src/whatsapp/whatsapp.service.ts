@@ -104,14 +104,17 @@ export class WhatsappService {
       if (showTyping) {
         body.typing_indicator = { type: 'text' }
       }
-      await lastValueFrom(
+      const res = await lastValueFrom(
         this.http.post(
           `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
           body,
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
-    } catch {}
+      this.logger.log(`markAsRead ${messageId} typing=${showTyping}: ${JSON.stringify(res.data)}`)
+    } catch (e: any) {
+      this.logger.error(`markAsRead error for ${messageId}: ${e?.response?.data?.error?.message || e.message}`)
+    }
   }
 
   async findByPhoneNumberId(phoneNumberId: string) {
