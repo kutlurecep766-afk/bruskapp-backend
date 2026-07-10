@@ -1,5 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
+import { StockMovementsService } from '../stock-movements/stock-movements.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import { N11Provider } from './providers/n11.provider'
 import { TrendyolProvider } from './providers/trendyol.provider'
 import { HepsiburadaProvider } from './providers/hepsiburada.provider'
@@ -15,6 +17,8 @@ export class MarketplaceService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly stockMovements: StockMovementsService,
+    private readonly notifications: NotificationsService,
     private readonly n11Provider: N11Provider,
     private readonly trendyolProvider: TrendyolProvider,
     private readonly hepsiburadaProvider: HepsiburadaProvider,
@@ -201,6 +205,20 @@ export class MarketplaceService {
           update: { stock: mp.stock, price: mp.price, title: mp.title, syncAt: new Date() },
           create: { tenantId, platform, barcode: mp.barcode, title: mp.title, price: mp.price, stock: mp.stock, currency: mp.currency, description: mp.description, images: mp.images || [], category: mp.category, brand: mp.brand, marketplaceId: mp.marketplaceId },
         })
+
+        // Yerel urunun stogunu da guncelle
+        const local = await this.prisma.product.findFirst({ where: { tenantId, barcode: mp.barcode } })
+        if (local && local.stock !== mp.stock) {
+          const diff = mp.stock - local.stock
+          await this.stockMovements.create({
+            tenantId,
+            productId: local.id,
+            type: 'SYNC_FROM_MARKETPLACE',
+            quantity: diff,
+            reference: platform,
+            note: `${platform} stogu ile senkronize edildi: ${local.stock} -> ${mp.stock}`,
+          })
+        }
         synced++
       }
 
@@ -295,6 +313,39 @@ export class MarketplaceService {
     })
 
     return { success: true, message: `${product.name} oluşturuldu`, product }
+  }
+
+  async deductStockForOrder(tenantId: string, platform: string, items: { barcode: string; quantity: number; name?: string }[]) {
+    let deducted = 0
+    for (const item of items) {
+      if (!item.barcode) continue
+      const local = await this.prisma.product.findFirst({ where: { tenantId, barcode: item.barcode } })
+      if (!local) continue
+
+      try {
+        await this.stockMovements.create({
+          tenantId,
+          productId: local.id,
+          type: 'ORDER',
+          quantity: -Math.abs(item.quantity),
+          reference: platform,
+          note: `${platform} siparişi - ${item.name || item.barcode} x${item.quantity}`,
+        })
+
+        // Dusuk stok kontrolu
+        if (local.stock - item.quantity <= local.lowStockThreshold && local.stock - item.quantity >= 0) {
+          this.notifications.createNotification(
+            platform,
+            'Düşük Stok Uyarısı',
+            `${local.name} (${local.barcode}) ürününün stoku ${Math.max(0, local.stock - item.quantity)} adete düştü. (Eşik: ${local.lowStockThreshold})`
+          ).catch(() => {})
+        }
+        deducted++
+      } catch (e: any) {
+        this.logger.warn(`Stok düşürme hatasi ${item.barcode}: ${e.message}`)
+      }
+    }
+    return deducted
   }
 
   async checkBulkStockStatus(platform: string, tenantId: string, trackingId: string) {

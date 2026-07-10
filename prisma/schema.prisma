@@ -38,25 +38,45 @@ model Tenant {
 }
 
 model Product {
-  id          Int      @id @default(autoincrement())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  name        String
-  description String   @default("")
-  barcode     String   @default("")
-  price       Float
-  images      Json     @default("[]")
-  category    String   @default("")
-  stock       Int      @default(0)
-  active      Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  stockMovements StockMovement[]
-  purchaseItems   PurchaseInvoiceItem[]
+  id                Int      @id @default(autoincrement())
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name              String
+  description       String   @default("")
+  barcode           String   @default("")
+  price             Float
+  images            Json     @default("[]")
+  category          String   @default("")
+  stock             Int      @default(0)
+  lowStockThreshold Int      @default(5)
+  active            Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  stockMovements    StockMovement[]
+  purchaseItems     PurchaseInvoiceItem[]
+  variants          ProductVariant[]
 
   @@index([tenantId, barcode])
   @@index([tenantId, active])
   @@index([tenantId, category])
+}
+
+model ProductVariant {
+  id          Int      @id @default(autoincrement())
+  productId   Int
+  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name        String   // e.g. "Siyah / XL"
+  barcode     String   @default("")
+  price       Float?
+  stock       Int      @default(0)
+  options     Json     @default("[]") // e.g. ["color:Siyah", "size:XL"]
+  images      Json     @default("[]")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  stockMovements StockMovement[]
+
+  @@index([productId, barcode])
 }
 
 model PaymentTransaction {
@@ -132,7 +152,12 @@ model Notification {
   title     String
   message   String
   read      Boolean  @default(false)
+  tenantId  String?
+  productId Int?
   createdAt DateTime @default(now())
+
+  @@index([tenantId, read])
+  @@index([tenantId, createdAt])
 }
 
 model Order {
@@ -265,11 +290,13 @@ model MarketplaceOrderItem {
 }
 
 model StockMovement {
-  id          Int      @id @default(autoincrement())
+  id          Int             @id @default(autoincrement())
   tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   productId   Int
-  product     Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product     Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variantId   Int?
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
   type        String   // ADD, DEDUCT, SYNC_FROM_MARKETPLACE, PURCHASE_INVOICE, ORDER, MANUAL
   quantity    Int      // positive for add, negative for deduct
   balance     Int      // stock balance after this movement
@@ -279,6 +306,7 @@ model StockMovement {
   createdAt   DateTime @default(now())
 
   @@index([tenantId, productId])
+  @@index([tenantId, variantId])
   @@index([tenantId, createdAt])
   @@index([productId])
 }

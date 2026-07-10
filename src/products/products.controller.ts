@@ -89,6 +89,41 @@ export class ProductsController {
     return this.productsService.addStockMovement(tenantId, product.id, 'MANUAL', qty, body.note, req.user?.id)
   }
 
+  // Variants
+  @Post(':id/variants')
+  async createVariant(@Req() req: any, @Param('id') id: string, @Body() body: {
+    name: string; barcode?: string; price?: number; stock?: number; options?: string[]; images?: string[]
+  }) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    const product = await this.productsService.findById(parseInt(id))
+    if (!product || product.tenantId !== tenantId) throw new ForbiddenException('Yetkiniz yok')
+    return this.productsService.createVariant(parseInt(id), body)
+  }
+
+  @Get(':id/variants')
+  async getVariants(@Req() req: any, @Param('id') id: string) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    const product = await this.productsService.findById(parseInt(id))
+    if (!product || product.tenantId !== tenantId) throw new ForbiddenException('Yetkiniz yok')
+    return this.productsService.getVariants(parseInt(id))
+  }
+
+  @Patch('variants/:variantId')
+  async updateVariant(@Req() req: any, @Param('variantId') variantId: string, @Body() body: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    return this.productsService.updateVariant(parseInt(variantId), body)
+  }
+
+  @Delete('variants/:variantId')
+  async deleteVariant(@Req() req: any, @Param('variantId') variantId: string) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    return this.productsService.deleteVariant(parseInt(variantId))
+  }
+
   @Delete(':id')
   async remove(@Req() req: any, @Param('id') id: string) {
     const product = await this.productsService.findById(parseInt(id))

@@ -6,6 +6,7 @@ import { trendyolgoToCommon } from './trendyolgo.adapter'
 import type { OrderInput } from './marketplace-order-adapter.interface'
 
 export { saveCommonOrder } from './save-common-order'
+export { deductStockForOrderItems } from './deduct-stock'
 export type { OrderInput, OrderItemInput, IMarketplaceOrderAdapter } from './marketplace-order-adapter.interface'
 
 const adapterMap: Record<string, (raw: any, tenantId: string) => OrderInput> = {

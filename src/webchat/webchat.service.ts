@@ -105,11 +105,9 @@ export class WebchatService {
 
 
   updateConfig(updates: Partial<ChatBotConfig>): ChatBotConfig {
-    const protectedKeys = ['knowledgeBase']
-    for (const key of protectedKeys) {
-      if (!(key in updates)) {
-        (updates as any)[key] = (this.config as any)[key]
-      }
+    // Bilgi havuzu bos gonderilse bile koru (admin panel form reset vs)
+    if (!updates.knowledgeBase && this.config.knowledgeBase) {
+      (updates as any).knowledgeBase = this.config.knowledgeBase
     }
     this.config = { ...this.config, ...updates }
     this.saveConfig()

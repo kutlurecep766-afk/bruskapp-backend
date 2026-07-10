@@ -1,5 +1,6 @@
 import type { PrismaClient } from '@prisma/client'
 import type { OrderInput } from './marketplace-order-adapter.interface'
+import { deductStockForOrderItems } from './deduct-stock'
 
 export async function saveCommonOrder(
   prisma: PrismaClient,
@@ -66,5 +67,11 @@ export async function saveCommonOrder(
         options: item.options,
       })),
     })
+
+    // Stok dusurme (background, hata vermesin)
+    deductStockForOrderItems(
+      prisma, common.tenantId, common.platform,
+      common.items.map(i => ({ barcode: i.barcode || '', quantity: i.quantity, name: i.title }))
+    ).catch(() => {})
   }
 }

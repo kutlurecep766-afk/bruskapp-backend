@@ -10,12 +10,39 @@ export class StockMovementsService {
   async create(data: {
     tenantId: string
     productId: number
+    variantId?: number
     type: string
     quantity: number
     reference?: string
     note?: string
     createdById?: string
   }) {
+    if (data.variantId) {
+      const variant = await this.prisma.productVariant.findUnique({ where: { id: data.variantId } })
+      if (!variant) throw new Error('Varyant bulunamadı')
+      const newBalance = variant.stock + data.quantity
+      if (newBalance < 0) throw new Error('Yetersiz stok')
+
+      await this.prisma.productVariant.update({
+        where: { id: data.variantId },
+        data: { stock: newBalance },
+      })
+
+      return this.prisma.stockMovement.create({
+        data: {
+          tenantId: data.tenantId,
+          productId: data.productId,
+          variantId: data.variantId,
+          type: data.type,
+          quantity: data.quantity,
+          balance: newBalance,
+          reference: data.reference,
+          note: data.note,
+          createdById: data.createdById,
+        },
+      })
+    }
+
     const product = await this.prisma.product.findUnique({ where: { id: data.productId } })
     if (!product) throw new Error('Ürün bulunamadı')
     const newBalance = product.stock + data.quantity
@@ -40,9 +67,10 @@ export class StockMovementsService {
     })
   }
 
-  async findAll(tenantId: string, productId?: number, page = 0, size = 50) {
+  async findAll(tenantId: string, productId?: number, variantId?: number, page = 0, size = 50) {
     const where: any = { tenantId }
     if (productId) where.productId = productId
+    if (variantId) where.variantId = variantId
 
     const [items, total] = await Promise.all([
       this.prisma.stockMovement.findMany({
@@ -50,7 +78,10 @@ export class StockMovementsService {
         orderBy: { createdAt: 'desc' },
         skip: page * size,
         take: size,
-        include: { product: { select: { id: true, name: true, barcode: true } } },
+        include: {
+          product: { select: { id: true, name: true, barcode: true } },
+          variant: { select: { id: true, name: true } },
+        },
       }),
       this.prisma.stockMovement.count({ where }),
     ])
