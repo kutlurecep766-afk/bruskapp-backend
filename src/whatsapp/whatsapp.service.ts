@@ -110,7 +110,7 @@ export class WhatsappService {
     } catch {}
   }
 
-  async sendTypingIndicator(tenantId: string, to: string, typing: boolean) {
+  async sendTypingIndicator(tenantId: string, to: string) {
     try {
       const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
       const res = await lastValueFrom(
@@ -120,15 +120,15 @@ export class WhatsappService {
             messaging_product: 'whatsapp',
             recipient_type: 'individual',
             to: to.replace(/[^0-9]/g, ''),
-            type: 'action',
-            action: { name: typing ? 'typing_on' : 'typing_off' },
+            type: 'typing_indicator',
+            typing_indicator: { type: 'text' },
           },
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
-      this.logger.log(`Typing ${typing ? 'on' : 'off'} for ${to}: ${JSON.stringify(res.data)}`)
+      this.logger.log(`Typing indicator sent for ${to}: ${JSON.stringify(res.data)}`)
     } catch (e: any) {
-      this.logger.error(`Typing ${typing ? 'on' : 'off'} error for ${to}: ${e?.response?.data?.error?.message || e.message}`)
+      this.logger.error(`Typing indicator error for ${to}: ${e?.response?.data?.error?.message || e.message}`)
     }
   }
 

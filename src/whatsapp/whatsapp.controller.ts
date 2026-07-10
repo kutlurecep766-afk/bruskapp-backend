@@ -208,7 +208,7 @@ export class WhatsappController {
             if (monthCount >= limit) continue
           }
 
-          this.whatsappService.sendTypingIndicator(tenantId, from, true)
+          this.whatsappService.sendTypingIndicator(tenantId, from)
 
           const reply = await this.webchatService.generateResponse(text)
 
