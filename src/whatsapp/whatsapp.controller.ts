@@ -185,10 +185,15 @@ export class WhatsappController {
         platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
-      // okundu bilgisi gonder + typing indicator (ayri istek)
+      // okundu bilgisi gonder (hemen)
       if (msg.id) {
         this.whatsappService.markAsRead(tenantId, msg.id)
-        this.whatsappService.showTypingIndicator(tenantId, msg.id)
+      }
+      // typing indicator gecikmeli gonder (whatsapp client'in mesaji islemesine izin ver)
+      if (msg.id) {
+        setTimeout(() => {
+          this.whatsappService.showTypingIndicator(tenantId, msg.id)
+        }, 1500)
       }
 
       // AI auto-reply
