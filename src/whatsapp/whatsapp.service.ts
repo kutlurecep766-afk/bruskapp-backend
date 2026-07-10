@@ -9,7 +9,7 @@ import { EncryptionService } from '../common/encryption.service'
 @Injectable()
 export class WhatsappService {
   private readonly logger = new Logger(WhatsappService.name)
-  private apiVersion = 'v21.0'
+  private apiVersion = 'v25.0'
   private pausedConversations = new Set<string>()
 
   constructor(
@@ -93,40 +93,23 @@ export class WhatsappService {
     }
   }
 
-  async markAsRead(tenantId: string, messageId: string) {
+  async markAsRead(tenantId: string, messageId: string, showTyping = false) {
     try {
       const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
+      const body: any = { messaging_product: 'whatsapp', status: 'read', message_id: messageId }
+      if (showTyping) {
+        body.typing_indicator = { type: 'text' }
+      }
       const res = await lastValueFrom(
         this.http.post(
           `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
-          { messaging_product: 'whatsapp', status: 'read', message_id: messageId },
+          body,
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
-      this.logger.log(`markAsRead ${messageId}: ${JSON.stringify(res.data)}`)
+      this.logger.log(`markAsRead${showTyping ? '+typing' : ''} ${messageId}: ${JSON.stringify(res.data)}`)
     } catch (e: any) {
       this.logger.error(`markAsRead error ${messageId}: ${e?.response?.data?.error?.message || e.message}`)
-    }
-  }
-
-  async showTypingIndicator(tenantId: string, messageId: string) {
-    try {
-      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
-      const res = await lastValueFrom(
-        this.http.post(
-          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
-          {
-            messaging_product: 'whatsapp',
-            status: 'read',
-            message_id: messageId,
-            typing_indicator: { type: 'text' },
-          },
-          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
-        )
-      )
-      this.logger.log(`showTypingIndicator ${messageId}: ${JSON.stringify(res.data)}`)
-    } catch (e: any) {
-      this.logger.error(`showTypingIndicator error ${messageId}: ${e?.response?.data?.error?.message || e.message}`)
     }
   }
 
