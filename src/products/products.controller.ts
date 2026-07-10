@@ -12,6 +12,7 @@ export class ProductsController {
   async create(@Req() req: any, @Body() body: {
     name: string
     description?: string
+    barcode?: string
     price: number
     images?: string[]
     category?: string
@@ -45,7 +46,19 @@ export class ProductsController {
     const product = await this.productsService.findById(parseInt(id))
     if (!product) throw new NotFoundException('Ürün bulunamadı')
     if (product.tenantId !== req.user?.tenantId) throw new ForbiddenException('Yetkiniz yok')
-    return this.productsService.update(parseInt(id), body)
+    const result = this.productsService.update(parseInt(id), body)
+    if (body.stock !== undefined || body.price !== undefined) {
+      this.productsService.syncToMarketplaces(product.tenantId, [parseInt(id)])
+        .catch(e => console.error('Sync hatasi:', e))
+    }
+    return result
+  }
+
+  @Post('sync')
+  async syncToMarketplaces(@Req() req: any, @Body() body: { productIds: number[] }) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('İşletme bulunamadı')
+    return this.productsService.syncToMarketplaces(tenantId, body.productIds)
   }
 
   @Delete(':id')
