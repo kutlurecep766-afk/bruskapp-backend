@@ -93,43 +93,25 @@ export class WhatsappService {
     }
   }
 
-  async markAsRead(tenantId: string, to: string, messageId: string) {
+  async markAsRead(tenantId: string, messageId: string, showTyping?: boolean) {
     try {
       const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
+      const body: any = {
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId,
+      }
+      if (showTyping) {
+        body.typing_indicator = { type: 'text' }
+      }
       await lastValueFrom(
         this.http.post(
           `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
-          {
-            messaging_product: 'whatsapp',
-            status: 'read',
-            message_id: messageId,
-          },
+          body,
           { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
         )
       )
     } catch {}
-  }
-
-  async sendTypingIndicator(tenantId: string, to: string) {
-    try {
-      const { accessToken, phoneNumberId } = await this.getCredentials(tenantId)
-      const res = await lastValueFrom(
-        this.http.post(
-          `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`,
-          {
-            messaging_product: 'whatsapp',
-            recipient_type: 'individual',
-            to: to.replace(/[^0-9]/g, ''),
-            type: 'typing_indicator',
-            typing_indicator: { type: 'text' },
-          },
-          { headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' } }
-        )
-      )
-      this.logger.log(`Typing indicator sent for ${to}: ${JSON.stringify(res.data)}`)
-    } catch (e: any) {
-      this.logger.error(`Typing indicator error for ${to}: ${e?.response?.data?.error?.message || e.message}`)
-    }
   }
 
   async findByPhoneNumberId(phoneNumberId: string) {

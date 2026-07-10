@@ -185,13 +185,14 @@ export class WhatsappController {
         platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
-      // okundu bilgisi gonder
+      // okundu bilgisi gonder (AI cevap verecekse typing indicator da goster)
+      const willReplyAi = !!(msg.text?.body && !this.whatsappService.isAiPaused(tenantId, from))
       if (msg.id) {
-        this.whatsappService.markAsRead(tenantId, from, msg.id).catch(() => {})
+        this.whatsappService.markAsRead(tenantId, msg.id, willReplyAi).catch(() => {})
       }
 
       // AI auto-reply
-      if (msg.text?.body && !this.whatsappService.isAiPaused(tenantId, from)) {
+      if (willReplyAi) {
         try {
           const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
           const feats = (tenantData?.features as any) || {}
@@ -207,8 +208,6 @@ export class WhatsappController {
             })
             if (monthCount >= limit) continue
           }
-
-          this.whatsappService.sendTypingIndicator(tenantId, from)
 
           const reply = await this.webchatService.generateResponse(text)
 
