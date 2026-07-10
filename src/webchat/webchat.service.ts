@@ -173,16 +173,21 @@ export class WebchatService {
 
   async generateMultimodalResponse(text: string, imageBase64: string, imageMime: string): Promise<string | null> {
     if (!this.aiApiKey) return null
-    const baseSystem = this.buildBaseSystem()
     const logoInfo = this.config.logoUrl ? `${this.config.businessName} logosu: ${this.config.logoDescription || 'Yuklenmis logo var'}. Kullanici bu logoyu gonderirse "Bu bizim logomuz" diyebilirsin.` : ''
     const userMsg = (text || 'Bu gorseli analiz et ve acikla.')
-    const dataUri = `data:${imageMime};base64,${imageBase64}`
     const systemContent = 'Sen bir gorsel analiz asistanisin. HIP BIR ISLETMEYE AIT DEGILSIN. Kullanici bir gorsel gonderdiginde:\n1. Gorselde ne goruyorsan SADECE onu anlat. Hicbir yorum, hikaye, marka, isletme adi EKLEME.\n2. ORNEK: "Bu goruntude siyah bir ayakkabi gorunuyor, beyaz tabanli."\n3. Gorsel analizi disINDA hicbir seyden bahsetme. Marka, sirket, web sitesi gormuyorsan adini anma.\n4. Kisa ve oz anlat. Uzun betimleme yapma.\n5. "Bilmiyorum", "analiz yapamiyorum" KESINLIKLE SOYLEME.\n6. Emin degilsen "Bu goruntude ... goruyorum" de.\n' + (logoInfo ? '\n' + logoInfo : '')
+    // Gorseli gecici dosyaya yaz ve URL olarak kullan
+    const uploadDir = path.join(process.cwd(), 'data', 'uploads')
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
+    const imgFileName = 'vision-' + Date.now() + '.jpg'
+    const imgPath = path.join(uploadDir, imgFileName)
+    fs.writeFileSync(imgPath, Buffer.from(imageBase64, 'base64'))
+    const imageUrl = 'https://bruskapp.com/api/uploads/' + imgFileName
     const body = JSON.stringify({
       model: this.aiModel,
       messages: [
         { role: 'system', content: systemContent },
-        { role: 'user', content: `![image](${dataUri})\n${userMsg}` },
+        { role: 'user', content: `Gorsel: ![image](${imageUrl})\n\nSoru: ${userMsg}` },
       ],
       temperature: 0,
       max_tokens: 800,
