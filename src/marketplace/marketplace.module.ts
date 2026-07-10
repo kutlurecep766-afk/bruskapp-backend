@@ -17,10 +17,12 @@ import { HepsiburadaModule } from '../hepsiburada/hepsiburada.module'
 import { YemeksepetiModule } from '../yemeksepeti/yemeksepeti.module'
 import { PrismaModule } from '../prisma.module'
 import { OrdersModule } from '../orders/orders.module'
+import { StockMovementsModule } from '../stock-movements/stock-movements.module'
+import { NotificationsModule } from '../notifications/notifications.module'
 
 @Module({
   imports: [
-    HttpModule, PrismaModule, OrdersModule, TrendyolModule, HepsiburadaModule, YemeksepetiModule,
+    HttpModule, PrismaModule, OrdersModule, TrendyolModule, HepsiburadaModule, YemeksepetiModule, StockMovementsModule, NotificationsModule,
     BullModule.registerQueue({
       name: 'marketplace-sync',
       defaultJobOptions: {
