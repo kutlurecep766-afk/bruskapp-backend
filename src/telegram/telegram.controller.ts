@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Req } from '@nestjs/common'
+import { Controller, Post, Get, Param, Body, Req } from '@nestjs/common'
 import { Public } from '../auth/public.decorator'
 import { TelegramService } from './telegram.service'
 import { MessagesService } from '../messages/messages.service'
