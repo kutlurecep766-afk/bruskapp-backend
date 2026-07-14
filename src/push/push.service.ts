@@ -59,15 +59,14 @@ export class PushService {
 
   async notify(tenantId: string, payload: { title: string; body: string; icon?: string }) {
     const subs = this.subscriptions.filter(s => s.tenantId === tenantId)
-    for (const sub of subs) {
-      try {
-        await webpush.sendNotification(sub, JSON.stringify(payload))
-      } catch (e: any) {
+    if (subs.length === 0) return
+    Promise.all(subs.map(sub =>
+      webpush.sendNotification(sub, JSON.stringify(payload)).catch((e: any) => {
         if (e.statusCode === 410 || e.statusCode === 404) {
           this.subscriptions = this.subscriptions.filter(s => s.endpoint !== sub.endpoint)
           this.save()
         }
-      }
-    }
+      })
+    )).catch(() => {})
   }
 }
