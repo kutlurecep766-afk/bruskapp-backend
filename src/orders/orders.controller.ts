@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Param, Body, Query, Logger, BadRequestException } from '@nestjs/common'
+import { Controller, Get, Post, Param, Body, Query, Logger, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 import { Public } from '../auth/public.decorator'
 import { OrdersService } from './orders.service'
+import { PrismaService } from '../prisma.service'
 
 @SkipThrottle()
 @Controller('orders')
@@ -12,6 +13,7 @@ export class OrdersController {
 
   constructor(
     private ordersService: OrdersService,
+    private prisma: PrismaService,
     @InjectQueue('order-processing') private orderQueue: Queue,
   ) {}
 
@@ -41,6 +43,18 @@ export class OrdersController {
     if (!body.customerName) {
       throw new BadRequestException('Musteri adi zorunludur')
     }
+
+    if (body.tableNumber && body.platform === 'Masa') {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: body.tenantId }, select: { storefrontConfig: true } })
+      if (tenant?.storefrontConfig) {
+        const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : tenant.storefrontConfig
+        const allowedTables: number[] = cfg.masaNumbers || []
+        if (allowedTables.length > 0 && !allowedTables.includes(body.tableNumber)) {
+          throw new ForbiddenException('Bu masa numarasi icin siparis alinmiyor')
+        }
+      }
+    }
+
     const order = await this.ordersService.create({
       ...body,
       tableNumber: body.tableNumber ?? null,
