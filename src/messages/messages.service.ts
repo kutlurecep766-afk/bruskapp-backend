@@ -15,9 +15,11 @@ export class MessagesService {
 
     // Push notification for incoming messages
     if (data.direction !== 'outgoing' && data.platform !== 'web_site') {
+      const senderName = data.fromName || data.from
+      const platformLabel = data.platform === 'zernio_whatsapp' ? 'WhatsApp' : data.platform === 'zernio_instagram' ? 'Instagram' : data.platform === 'zernio_facebook' ? 'Facebook' : data.platform.charAt(0).toUpperCase() + data.platform.slice(1)
       this.pushService.notify(data.tenantId, {
-        title: data.platform.charAt(0).toUpperCase() + data.platform.slice(1),
-        body: data.from + ': ' + (data.content?.slice(0, 100) || ''),
+        title: '💬 ' + platformLabel + ' - ' + senderName,
+        body: data.content?.slice(0, 120) || '',
         icon: '/favicon.svg',
       }).catch(() => {})
     }

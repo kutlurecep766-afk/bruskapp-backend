@@ -45,8 +45,15 @@ export class NotificationsController {
   }
 
   @Public()
+  @Post('announcements/:id/approve')
+  async approveAnnouncement(@Param('id') id: string) {
+    const a = await this.notificationsService.approveAnnouncement(id)
+    return { success: true, announcement: a }
+  }
+
+  @Public()
   @Put('announcements/:id')
-  async updateAnnouncement(@Param('id') id: string, @Body() body: { title?: string; message?: string; isActive?: boolean }) {
+  async updateAnnouncement(@Param('id') id: string, @Body() body: { title?: string; message?: string; isActive?: boolean; status?: string }) {
     const a = await this.notificationsService.updateAnnouncement(id, body)
     return { success: true, announcement: a }
   }

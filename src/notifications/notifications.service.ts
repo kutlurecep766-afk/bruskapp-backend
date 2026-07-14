@@ -158,14 +158,21 @@ async sendTest(platform: string) {
   }
 
   async getActiveAnnouncements() {
-    return this.prisma.announcement.findMany({ where: { isActive: true }, orderBy: { createdAt: 'desc' } })
+    return this.prisma.announcement.findMany({
+      where: { isActive: true, status: 'approved' },
+      orderBy: { createdAt: 'desc' },
+    })
   }
 
   async createAnnouncement(title: string, message: string, createdBy?: string) {
-    return this.prisma.announcement.create({ data: { title, message, createdBy } })
+    return this.prisma.announcement.create({ data: { title, message, status: 'pending', createdBy } })
   }
 
-  async updateAnnouncement(id: string, data: { title?: string; message?: string; isActive?: boolean }) {
+  async approveAnnouncement(id: string) {
+    return this.prisma.announcement.update({ where: { id }, data: { status: 'approved', isActive: true } })
+  }
+
+  async updateAnnouncement(id: string, data: { title?: string; message?: string; isActive?: boolean; status?: string }) {
     return this.prisma.announcement.update({ where: { id }, data })
   }
 
