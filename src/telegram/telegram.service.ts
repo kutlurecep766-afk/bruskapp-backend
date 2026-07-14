@@ -211,7 +211,7 @@ export class TelegramService implements OnModuleInit {
 
     if (chatId && msg.text) {
       let reply = ''
-      const dsActive = !!this.config.get('DEEPSEEK_API_KEY') && this.config.get('deepseek_paused') !== 'true'
+      const dsActive = !!this.config.get('DEEPSEEK_API_KEY')
       if (dsActive) {
         let systemPrompt = 'Sen yardimsever bir yapay zeka asistanisin. Kisa ve dogal cevaplar ver. Turkce konus.'
         if (this.webchatService) {

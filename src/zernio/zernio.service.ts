@@ -75,7 +75,7 @@ export class ZernioService implements OnModuleInit {
       const res = await lastValueFrom(this.http.post(this.apiBase + '/profiles', {
         name: name || 'Bruskapp-' + tenantId.substring(0, 8),
         description: 'Bruskapp tenant: ' + tenantId,
-      }, { headers: this.headers() }))
+      }, { headers: this.headers(), timeout: 15000 }))
       const profile = res.data?.profile
       if (profile?._id) {
         await this.prisma.zernioConnection.upsert({
@@ -109,6 +109,7 @@ export class ZernioService implements OnModuleInit {
           headless: 'true',
           redirect_url: 'https://bruskapp.com/api/zernio/callback',
         },
+        timeout: 30000,
       }))
       const authUrl = res.data?.authUrl || null
       if (!authUrl) {
@@ -130,7 +131,7 @@ export class ZernioService implements OnModuleInit {
       const res = await lastValueFrom(this.http.post(this.apiBase + '/connect/' + platform + '/callback', {
         profileId: conn.profileId,
         code,
-      }, { headers: this.headers() }))
+      }, { headers: this.headers(), timeout: 15000 }))
 
       const account = res.data?.account
       if (account?._id) {
