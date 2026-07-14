@@ -1,6 +1,7 @@
-import { Controller, Get, Param, Res } from '@nestjs/common'
+import { Controller, Get, Post, Param, Body, Res } from '@nestjs/common'
 import { Public } from '../auth/public.decorator'
 import { Response } from 'express'
+import { PushService } from './push.service'
 import * as path from 'path'
 import * as fs from 'fs'
 
@@ -13,6 +14,8 @@ const ICONS: Record<string, string> = {
 
 @Controller('push')
 export class PushController {
+  constructor(private readonly pushService: PushService) {}
+
   @Public()
   @Get('icons/:name')
   getIcon(@Param('name') name: string, @Res() res: Response) {
@@ -21,5 +24,25 @@ export class PushController {
     res.setHeader('Content-Type', 'image/svg+xml')
     res.setHeader('Cache-Control', 'public, max-age=31536000')
     res.send(svg)
+  }
+
+  @Public()
+  @Get('apk')
+  downloadApk(@Res() res: Response) {
+    const apkPath = path.join(process.cwd(), 'data', 'bruskapp.apk')
+    if (!fs.existsSync(apkPath)) { res.status(404).send('APK bulunamadi'); return }
+    const stat = fs.statSync(apkPath)
+    res.setHeader('Content-Type', 'application/vnd.android.package-archive')
+    res.setHeader('Content-Disposition', 'attachment; filename="bruskapp.apk"')
+    res.setHeader('Content-Length', stat.size)
+    res.sendFile(apkPath)
+  }
+
+  @Public()
+  @Post('fcm-register')
+  registerFcm(@Body() body: { token: string }) {
+    if (!body.token) return { success: false }
+    this.pushService.registerFcm(body.token)
+    return { success: true }
   }
 }
