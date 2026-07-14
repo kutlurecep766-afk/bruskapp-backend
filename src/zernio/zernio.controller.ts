@@ -86,4 +86,13 @@ export class ZernioController {
     await this.zernio['ensureWebhook']()
     return { success: true, message: 'Webhook ayarlandi' }
   }
+
+  @Post('ensure-profile')
+  async ensureProfile(@Body() body: { tenantId: string }) {
+    if (!body.tenantId) return { success: false, message: 'tenantId gerekli' }
+    const conn = await this.zernio['prisma'].zernioConnection.findUnique({ where: { tenantId: body.tenantId } })
+    if (conn?.profileId) return { success: true, exists: true }
+    await this.zernio.createProfile(body.tenantId, 'Bruskapp-' + body.tenantId.substring(0, 8))
+    return { success: true, exists: false }
+  }
 }
