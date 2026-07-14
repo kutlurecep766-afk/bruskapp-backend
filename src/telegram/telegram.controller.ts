@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Body, Req } from '@nestjs/common'
+import { Controller, Post, Get, Param, Body, Req, ForbiddenException } from '@nestjs/common'
 import { Public } from '../auth/public.decorator'
 import { TelegramService } from './telegram.service'
 import { MessagesService } from '../messages/messages.service'
@@ -38,10 +38,21 @@ export class TelegramController {
     return this.telegramService.setWebhook()
   }
 
-  @Public()
   @Post('send')
-  async sendMessage(@Body() dto: TelegramSendDto) {
-    const ok = await this.telegramService.sendMessage(dto.chatId, dto.message)
+  async sendMessage(@Req() req: any, @Body() dto: TelegramSendDto) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('Yetkiniz yok')
+    const ok = await this.telegramService.sendTenantMessage(tenantId, dto.chatId, dto.message)
+    if (ok && this.messagesService) {
+      await this.messagesService.create({
+        platform: 'telegram',
+        from: dto.chatId,
+        content: dto.message,
+        messageId: 'out_' + Date.now().toString(),
+        tenantId,
+        direction: 'outgoing',
+      }).catch(() => {})
+    }
     return { success: ok, message: ok ? 'Mesaj gonderildi' : 'Gonderim hatasi' }
   }
 

@@ -4,6 +4,7 @@ import { lastValueFrom } from 'rxjs'
 import { ConfigService } from '../config.service'
 import { MessagesService } from '../messages/messages.service'
 import { PrismaService } from '../prisma.service'
+import { WebchatService } from '../webchat/webchat.service'
 
 @Injectable()
 export class TelegramService implements OnModuleInit {
@@ -16,6 +17,7 @@ export class TelegramService implements OnModuleInit {
     private readonly config: ConfigService,
     @Optional() private readonly messagesService?: MessagesService,
     @Optional() private readonly prisma?: PrismaService,
+    @Optional() private readonly webchatService?: WebchatService,
   ) {}
 
   private get botToken() {
@@ -207,8 +209,49 @@ export class TelegramService implements OnModuleInit {
       }).catch(e => this.logger.error('Mesaj kaydetme hatasi: ' + e.message))
     }
 
-    if (chatId && msg.text && this.messagesService) {
-      const reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'
+    if (chatId && msg.text) {
+      let reply = ''
+      const dsActive = !!this.config.get('DEEPSEEK_API_KEY') && this.config.get('deepseek_paused') !== 'true'
+      if (dsActive) {
+        let systemPrompt = 'Sen yardimsever bir yapay zeka asistanisin. Kisa ve dogal cevaplar ver. Turkce konus.'
+        if (this.webchatService) {
+          const wc = this.webchatService.getConfig()
+          const parts: string[] = []
+          if (wc.businessName) parts.push('Isletme Adi: ' + wc.businessName)
+          if (wc.description) parts.push('Aciklama: ' + wc.description)
+          if (wc.address) parts.push('Adres: ' + wc.address)
+          if (wc.phone) parts.push('Telefon: ' + wc.phone)
+          if (wc.email) parts.push('E-posta: ' + wc.email)
+          if (wc.hours) parts.push('Calisma Saatleri: ' + wc.hours)
+          if (wc.knowledgeBase) parts.push('BILGI HAVUZU:\n' + wc.knowledgeBase)
+          if (wc.systemPrompt) parts.push(wc.systemPrompt)
+          if (parts.length > 0) {
+            systemPrompt = 'Sen bir isletmenin yapay zeka asistanisin. Su bilgileri kullanarak kisa, dogal ve yardimsever cevaplar ver:\n\n' + parts.join('\n') + '\n\nSadece sana verilen bilgileri kullan. Bilmiyorsan uydurma, yonlendir.'
+          }
+        }
+        try {
+          const apiKey = this.config.get('DEEPSEEK_API_KEY')
+          const res = await lastValueFrom(this.http.post('https://api.deepseek.com/v1/chat/completions', {
+            model: 'deepseek-chat',
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: msg.text },
+            ],
+            temperature: 0.3,
+            max_tokens: 500,
+          }, {
+            headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+            timeout: 15000,
+          }))
+          const choice = res.data?.choices?.[0]
+          reply = choice?.message?.content || ''
+        } catch (e: any) {
+          this.logger.error('DeepSeek hatasi (tenant webhook): ' + (e?.message || ''))
+        }
+      }
+      if (!reply) {
+        reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'
+      }
       try {
         await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/sendMessage', {
           chat_id: chatId, text: reply, parse_mode: 'HTML',
@@ -248,6 +291,17 @@ export class TelegramService implements OnModuleInit {
     if (!this.botToken || !chatId || !text) return false
     try {
       const res = await lastValueFrom(this.http.post(this.apiBase + '/sendMessage', {
+        chat_id: chatId, text, parse_mode: parseMode,
+      }))
+      return !!res.data?.ok
+    } catch { return false }
+  }
+
+  async sendTenantMessage(tenantId: string, chatId: string, text: string, parseMode = 'HTML'): Promise<boolean> {
+    const token = this.getTenantBotToken(tenantId)
+    if (!token || !chatId || !text) return false
+    try {
+      const res = await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/sendMessage', {
         chat_id: chatId, text, parse_mode: parseMode,
       }))
       return !!res.data?.ok
