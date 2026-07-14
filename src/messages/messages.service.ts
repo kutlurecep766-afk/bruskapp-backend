@@ -24,7 +24,7 @@ export class MessagesService {
       this.pushService.notify(data.tenantId, {
         title: platformLabel + ' - ' + senderName,
         body: data.content?.slice(0, 120) || '',
-        icon: iconName ? '/brk-mgmt/icons/' + iconName + '.svg' : '/favicon.svg',
+        icon: iconName ? 'https://cdn.simpleicons.org/' + iconName : '/favicon.svg',
       }).catch(() => {})
     }
 
