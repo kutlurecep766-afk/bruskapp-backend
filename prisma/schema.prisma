@@ -35,6 +35,7 @@ model Tenant {
   purchaseInvoices PurchaseInvoice[]
   whatsappConfig TenantWhatsAppConfig?
   instagramConfig TenantInstagramConfig?
+  zernioConnection ZernioConnection?
 }
 
 model Product {
@@ -366,4 +367,15 @@ model TenantInstagramConfig {
   active              Boolean  @default(false)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model ZernioConnection {
+  id            String   @id @default(uuid())
+  tenantId      String   @unique
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  profileId     String?
+  platforms     Json     @default("[]")
+  webhookSecret String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }

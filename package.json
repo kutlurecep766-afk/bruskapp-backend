@@ -19,6 +19,7 @@
     "@nestjs/passport": "11.0.5",
     "@nestjs/platform-express": "10.4.15",
     "@nestjs/throttler": "6.5.0",
+    "@zernio/node": "^0.2.352",
     "axios": "1.16.1",
     "bcryptjs": "3.0.3",
     "bullmq": "^5.79.3",
