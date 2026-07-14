@@ -5,6 +5,7 @@ import * as webpush from 'web-push'
 import { HttpService } from '@nestjs/axios'
 import { lastValueFrom } from 'rxjs'
 
+
 @Injectable()
 export class PushService {
   private readonly logger = new Logger(PushService.name)
@@ -75,6 +76,24 @@ export class PushService {
     this.save()
   }
 
+  private fcmApp: any = null
+
+  private getFcmApp() {
+    if (this.fcmApp) return this.fcmApp
+    const keyPath = path.join(process.cwd(), 'data', 'firebase-key.json')
+    if (!fs.existsSync(keyPath)) return null
+    try {
+      const key = JSON.parse(fs.readFileSync(keyPath, 'utf-8'))
+      const admin = require('firebase-admin')
+      if (admin.apps.length === 0) {
+        this.fcmApp = admin.initializeApp({ credential: admin.credential.cert(key) })
+      } else {
+        this.fcmApp = admin.apps[0]
+      }
+      return this.fcmApp
+    } catch { return null }
+  }
+
   async notify(tenantId: string, payload: { title: string; body: string; icon?: string }) {
     const subs = this.subscriptions.filter(s => s.tenantId === tenantId)
     if (subs.length > 0) {
@@ -87,15 +106,16 @@ export class PushService {
         })
       )).catch(() => {})
     }
-    const fcmKey = process.env.FCM_SERVER_KEY || ''
-    if (fcmKey) {
-      const fcmSubs = this.fcmTokens.filter(t => !tenantId || t.tenantId === tenantId)
-      if (fcmSubs.length > 0) {
+    const fcmSubs = this.fcmTokens.filter(t => !tenantId || t.tenantId === tenantId)
+    if (fcmSubs.length > 0) {
+      const app = this.getFcmApp()
+      if (app) {
         Promise.all(fcmSubs.map(t =>
-          lastValueFrom(this.http.post('https://fcm.googleapis.com/fcm/send', {
-            to: t.token,
-            notification: { title: payload.title, body: payload.body, icon: payload.icon || '' },
-          }, { headers: { 'Authorization': 'key=' + fcmKey, 'Content-Type': 'application/json' } })).catch(() => {})
+          app.messaging().send({
+            token: t.token,
+            notification: { title: payload.title, body: payload.body },
+            android: { notification: { icon: payload.icon || '', channelId: 'default' } },
+          }).catch(() => {})
         )).catch(() => {})
       }
     }
