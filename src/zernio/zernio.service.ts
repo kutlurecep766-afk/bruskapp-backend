@@ -109,7 +109,7 @@ export class ZernioService implements OnModuleInit {
           headless: 'true',
           redirect_url: 'https://bruskapp.com/api/zernio/callback',
         },
-        timeout: 15000,
+        timeout: 30000,
       }))
       const authUrl = res.data?.authUrl || null
       if (!authUrl) {
