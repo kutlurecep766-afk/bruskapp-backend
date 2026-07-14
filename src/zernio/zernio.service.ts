@@ -109,7 +109,7 @@ export class ZernioService implements OnModuleInit {
           headless: 'true',
           redirect_url: 'https://bruskapp.com/api/zernio/callback',
         },
-        timeout: 30000,
+        timeout: 15000,
       }))
       const authUrl = res.data?.authUrl || null
       if (!authUrl) {
@@ -131,7 +131,7 @@ export class ZernioService implements OnModuleInit {
       const res = await lastValueFrom(this.http.post(this.apiBase + '/connect/' + platform + '/callback', {
         profileId: conn.profileId,
         code,
-      }, { headers: this.headers(), timeout: 15000 }))
+      }, { headers: this.headers(), timeout: 10000 }))
 
       const account = res.data?.account
       if (account?._id) {
