@@ -71,6 +71,32 @@ export class TelegramController {
   }
 
   @Public()
+  @Post('tenant-connect')
+  async tenantConnect(@Body() body: { tenantId: string; token: string }) {
+    return this.telegramService.connectTenantBot(body.tenantId, body.token)
+  }
+
+  @Public()
+  @Post('tenant-disconnect')
+  async tenantDisconnect(@Body() body: { tenantId: string }) {
+    return this.telegramService.disconnectTenantBot(body.tenantId)
+  }
+
+  @Public()
+  @Post('tenant-status')
+  async tenantStatus(@Body() body: { tenantId: string }) {
+    if (!body.tenantId) return { connected: false, botInfo: null }
+    return this.telegramService.getTenantBotStatus(body.tenantId)
+  }
+
+  @Public()
+  @Post('webhook/:tenantId')
+  async tenantWebhook(@Param('tenantId') tenantId: string, @Req() req: any) {
+    await this.telegramService.handleTenantWebhook(tenantId, req.body)
+    return { status: 'ok' }
+  }
+
+  @Public()
   @Get('polling-status')
   async getPollingStatus() {
     return this.telegramService.getPollingStatus()

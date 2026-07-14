@@ -91,9 +91,11 @@ export class TelegramService implements OnModuleInit {
     }
   }
 
-  async getBotInfo(): Promise<any> {
+  async getBotInfo(token?: string): Promise<any> {
+    const tk = token || this.botToken
+    if (!tk) return null
     try {
-      const res = await lastValueFrom(this.http.get(this.apiBase + '/getMe'))
+      const res = await lastValueFrom(this.http.get('https://api.telegram.org/bot' + tk + '/getMe'))
       return res.data?.result || null
     } catch { return null }
   }
@@ -121,14 +123,125 @@ export class TelegramService implements OnModuleInit {
     return { success: true, message: 'Token kaydedildi ve polling baslatildi', botInfo: test.botInfo }
   }
 
-  async removeWebhook(): Promise<void> {
+  async removeWebhook(token?: string): Promise<void> {
+    const tk = token || this.botToken
+    if (!tk) return
     try {
-      await lastValueFrom(this.http.post(this.apiBase + '/deleteWebhook', {}))
+      await lastValueFrom(this.http.post('https://api.telegram.org/bot' + tk + '/deleteWebhook', {}))
     } catch {}
   }
 
   async setWebhook(): Promise<{ success: boolean; message: string }> {
     return { success: false, message: 'Webhook kullanilmiyor, polling aktif' }
+  }
+
+  // --- Multi-tenant Telegram bot baglantisi ---
+
+  private telegramTokenKey(tenantId: string) { return 'telegram_token_' + tenantId }
+  private telegramInfoKey(tenantId: string) { return 'telegram_info_' + tenantId }
+
+  async connectTenantBot(tenantId: string, token: string): Promise<{ success: boolean; message: string; botInfo?: any }> {
+    if (!tenantId || !token) return { success: false, message: 'tenantId ve token gerekli' }
+    const test = await this.testConnection(token)
+    if (!test.success) return test
+    await this.removeWebhook(token)
+    const webhookUrl = 'https://bruskapp.com/api/telegram/webhook/' + tenantId
+    try {
+      const res = await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/setWebhook', {
+        url: webhookUrl,
+        allowed_updates: ['message', 'callback_query'],
+      }))
+      if (!res.data?.ok) {
+        return { success: false, message: 'Webhook ayarlanamadi: ' + (res.data?.description || '') }
+      }
+    } catch (e: any) {
+      return { success: false, message: 'Webhook hatasi: ' + (e?.message || '') }
+    }
+    this.config.set(this.telegramTokenKey(tenantId), token)
+    if (test.botInfo) {
+      this.config.set(this.telegramInfoKey(tenantId), JSON.stringify(test.botInfo))
+    }
+    this.logger.log('Tenant bot baglandi: ' + tenantId + ' -> @' + (test.botInfo?.username || ''))
+    return { success: true, message: 'Bot basariyla baglandi', botInfo: test.botInfo }
+  }
+
+  async disconnectTenantBot(tenantId: string): Promise<{ success: boolean; message: string }> {
+    const token = this.getTenantBotToken(tenantId)
+    if (!token) return { success: false, message: 'Bagli bot bulunamadi' }
+    await this.removeWebhook(token)
+    this.config.set(this.telegramTokenKey(tenantId), '')
+    this.config.set(this.telegramInfoKey(tenantId), '')
+    return { success: true, message: 'Bot baglantisi kesildi' }
+  }
+
+  getTenantBotToken(tenantId: string): string {
+    return this.config.get(this.telegramTokenKey(tenantId)) || ''
+  }
+
+  getTenantBotInfo(tenantId: string): any {
+    const raw = this.config.get(this.telegramInfoKey(tenantId))
+    if (!raw) return null
+    try { return JSON.parse(raw) } catch { return null }
+  }
+
+  async handleTenantWebhook(tenantId: string, body: any): Promise<boolean> {
+    const token = this.getTenantBotToken(tenantId)
+    if (!token) return false
+    const msg = body?.message
+    if (!msg) return true
+    const chatId = msg.chat?.id?.toString()
+    const from = msg.from?.username || msg.from?.id?.toString() || 'unknown'
+    const content = msg.text || '(media)'
+    const fromName = msg.from?.first_name || ''
+    this.logger.log('Tenant [' + tenantId + '] mesaj: ' + from + ' -> ' + content.substring(0, 50))
+
+    if (this.messagesService) {
+      await this.messagesService.create({
+        platform: 'telegram',
+        from,
+        fromName,
+        content,
+        messageId: msg.message_id?.toString() || Date.now().toString(),
+        tenantId,
+        direction: 'incoming',
+      }).catch(e => this.logger.error('Mesaj kaydetme hatasi: ' + e.message))
+    }
+
+    if (chatId && msg.text && this.messagesService) {
+      const reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'
+      try {
+        await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/sendMessage', {
+          chat_id: chatId, text: reply, parse_mode: 'HTML',
+        }))
+        if (this.messagesService) {
+          await this.messagesService.create({
+            platform: 'telegram',
+            from: from,
+            fromName: fromName,
+            content: reply,
+            messageId: 'out_' + Date.now().toString(),
+            tenantId,
+            direction: 'outgoing',
+          }).catch(() => {})
+        }
+      } catch (e: any) {
+        this.logger.error('Oto-yanit hatasi: ' + (e?.message || ''))
+      }
+    }
+    return true
+  }
+
+  async getTenantBotStatus(tenantId: string): Promise<{ connected: boolean; botInfo: any }> {
+    const token = this.getTenantBotToken(tenantId)
+    if (!token) return { connected: false, botInfo: null }
+    const info = this.getTenantBotInfo(tenantId)
+    if (info) return { connected: true, botInfo: info }
+    const fresh = await this.getBotInfo(token)
+    if (fresh) {
+      this.config.set(this.telegramInfoKey(tenantId), JSON.stringify(fresh))
+      return { connected: true, botInfo: fresh }
+    }
+    return { connected: false, botInfo: null }
   }
 
   async sendMessage(chatId: string, text: string, parseMode = 'HTML'): Promise<boolean> {
