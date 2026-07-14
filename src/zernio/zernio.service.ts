@@ -92,9 +92,11 @@ export class ZernioService implements OnModuleInit {
   }
 
   async getConnectUrl(tenantId: string, platform: string): Promise<string | null> {
-    const conn = await this.prisma.zernioConnection.findUnique({ where: { tenantId } })
+    let conn = await this.prisma.zernioConnection.findUnique({ where: { tenantId } })
     if (!conn?.profileId) {
-      await this.createProfile(tenantId, 'Bruskapp-' + tenantId.substring(0, 8))
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } })
+      const name = tenant?.name || 'Bruskapp-' + tenantId.substring(0, 8)
+      await this.createProfile(tenantId, name)
     }
     const updated = await this.prisma.zernioConnection.findUnique({ where: { tenantId } })
     if (!updated?.profileId) return null
@@ -108,9 +110,14 @@ export class ZernioService implements OnModuleInit {
           redirect_url: 'https://bruskapp.com/api/zernio/callback',
         },
       }))
-      return res.data?.authUrl || null
+      const authUrl = res.data?.authUrl || null
+      if (!authUrl) {
+        this.logger.warn('Zernio authUrl bos (platform=' + platform + '): ' + JSON.stringify(res.data))
+      }
+      return authUrl
     } catch (e: any) {
-      this.logger.error('Baglanti URL hatasi (' + platform + '): ' + (e?.message || 'bilinmeyen'))
+      const errBody = e?.response?.data ? JSON.stringify(e.response.data) : ''
+      this.logger.error('Baglanti URL hatasi (' + platform + '): ' + (e?.message || 'bilinmeyen') + ' ' + errBody)
       return null
     }
   }

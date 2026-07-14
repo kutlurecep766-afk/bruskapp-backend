@@ -92,7 +92,9 @@ export class ZernioController {
     if (!body.tenantId) return { success: false, message: 'tenantId gerekli' }
     const conn = await this.zernio['prisma'].zernioConnection.findUnique({ where: { tenantId: body.tenantId } })
     if (conn?.profileId) return { success: true, exists: true }
-    await this.zernio.createProfile(body.tenantId, 'Bruskapp-' + body.tenantId.substring(0, 8))
+    const tenant = await this.zernio['prisma'].tenant.findUnique({ where: { id: body.tenantId }, select: { name: true } })
+    const name = tenant?.name || 'Bruskapp-' + body.tenantId.substring(0, 8)
+    await this.zernio.createProfile(body.tenantId, name)
     return { success: true, exists: false }
   }
 }
