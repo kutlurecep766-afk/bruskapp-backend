@@ -137,4 +137,39 @@ async sendTest(platform: string) {
     if (token.length < 10) return token
     return token.substring(0, 6) + '...' + token.substring(token.length - 4)
   }
+
+  // Notification Preferences
+  async getPreferences(tenantId: string) {
+    const prefs = await this.prisma.notificationPreference.findUnique({ where: { tenantId } })
+    return prefs || { tenantId, newOrder: true, lowStock: true, newMessage: true }
+  }
+
+  async setPreferences(tenantId: string, data: { newOrder?: boolean; lowStock?: boolean; newMessage?: boolean }) {
+    return this.prisma.notificationPreference.upsert({
+      where: { tenantId },
+      create: { tenantId, ...data },
+      update: data,
+    })
+  }
+
+  // Announcements
+  async getAnnouncements() {
+    return this.prisma.announcement.findMany({ orderBy: { createdAt: 'desc' } })
+  }
+
+  async getActiveAnnouncements() {
+    return this.prisma.announcement.findMany({ where: { isActive: true }, orderBy: { createdAt: 'desc' } })
+  }
+
+  async createAnnouncement(title: string, message: string, createdBy?: string) {
+    return this.prisma.announcement.create({ data: { title, message, createdBy } })
+  }
+
+  async updateAnnouncement(id: string, data: { title?: string; message?: string; isActive?: boolean }) {
+    return this.prisma.announcement.update({ where: { id }, data })
+  }
+
+  async deleteAnnouncement(id: string) {
+    return this.prisma.announcement.delete({ where: { id } })
+  }
 }

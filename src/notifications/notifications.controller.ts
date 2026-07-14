@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Res, Body } from '@nestjs/common'
+import { Controller, Get, Post, Put, Delete, Param, Res, Body, Req } from '@nestjs/common'
 import { Public } from '../auth/public.decorator'
 import { NotificationsService } from './notifications.service'
 import { Response } from 'express'
@@ -6,6 +6,57 @@ import { Response } from 'express'
 @Controller('notifications')
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
+
+  @Public()
+  @Get('preferences')
+  async getPreferences(@Req() req: any) {
+    const tenantId = req.user?.tenantId || ''
+    if (!tenantId) return {}
+    return this.notificationsService.getPreferences(tenantId)
+  }
+
+  @Public()
+  @Post('preferences')
+  async setPreferences(@Req() req: any, @Body() body: { newOrder?: boolean; lowStock?: boolean; newMessage?: boolean }) {
+    const tenantId = req.user?.tenantId || ''
+    if (!tenantId) return { success: false, message: 'Tenant bulunamadi' }
+    await this.notificationsService.setPreferences(tenantId, body)
+    return { success: true }
+  }
+
+  @Public()
+  @Get('announcements')
+  async getAnnouncements() {
+    return this.notificationsService.getActiveAnnouncements()
+  }
+
+  @Public()
+  @Get('announcements/all')
+  async getAllAnnouncements() {
+    return this.notificationsService.getAnnouncements()
+  }
+
+  @Public()
+  @Post('announcements')
+  async createAnnouncement(@Body() body: { title: string; message: string }) {
+    if (!body.title || !body.message) return { success: false, message: 'Baslik ve mesaj gerekli' }
+    const a = await this.notificationsService.createAnnouncement(body.title, body.message, 'admin')
+    return { success: true, announcement: a }
+  }
+
+  @Public()
+  @Put('announcements/:id')
+  async updateAnnouncement(@Param('id') id: string, @Body() body: { title?: string; message?: string; isActive?: boolean }) {
+    const a = await this.notificationsService.updateAnnouncement(id, body)
+    return { success: true, announcement: a }
+  }
+
+  @Public()
+  @Delete('announcements/:id')
+  async deleteAnnouncement(@Param('id') id: string) {
+    await this.notificationsService.deleteAnnouncement(id)
+    return { success: true }
+  }
 
   @Public()
   @Get()
