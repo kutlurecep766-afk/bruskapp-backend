@@ -22,7 +22,7 @@ export class PushController {
     const svg = ICONS[name.toLowerCase()]
     if (!svg) { res.status(404).send('Not found'); return }
     res.setHeader('Content-Type', 'image/svg+xml')
-    res.setHeader('Cache-Control', 'public, max-age=31536000')
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
     res.send(svg)
   }
 
