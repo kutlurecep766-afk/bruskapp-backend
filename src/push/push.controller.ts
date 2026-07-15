@@ -25,6 +25,25 @@ export class PushController {
   }
 
   @Public()
+  @Get('favicon.svg')
+  getFavicon(@Res() res: Response) {
+    const svg = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stopColor="#2563eb"/>
+      <stop offset="100%" stopColor="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" rx="22" fill="url(#brand)"/>
+  <rect x="6" y="6" width="88" height="88" rx="16" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5"/>
+  <text x="50" y="70" fontFamily="'Inter','Segoe UI',Arial,sans-serif" fontSize="60" fontWeight="800" fill="white" textAnchor="middle">B</text>
+</svg>`
+    res.setHeader('Content-Type', 'image/svg+xml')
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
+    res.send(svg)
+  }
+
+  @Public()
   @Get('manifest.json')
   getManifest(@Res() res: Response) {
     res.setHeader('Content-Type', 'application/json')
@@ -41,7 +60,7 @@ export class PushController {
       orientation: "portrait-primary",
       icons: [
         {
-          src: "/brk-mgmt/favicon.svg",
+          src: "/api/push/favicon.svg",
           sizes: "any",
           type: "image/svg+xml",
           purpose: "any maskable",
