@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common'
 import { Subject } from 'rxjs'
 import { PrismaService } from '../prisma.service'
-import { PrinterService } from '../printer/printer.service'
 
 export interface OrderEvent {
   type: 'new_order' | 'status_update'
@@ -15,7 +14,6 @@ export class OrdersService {
 
   constructor(
     private prisma: PrismaService,
-    private printerService: PrinterService,
   ) {}
 
   async create(data: {
@@ -47,17 +45,6 @@ export class OrdersService {
     })
 
     this.orderEvents.next({ type: 'new_order', order })
-
-    const tenant = await this.prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { slug: true } })
-
-    this.printerService.print({
-      tenantSlug: tenant?.slug || '',
-      tableNumber: data.tableNumber,
-      customerName: data.customerName,
-      products: data.products,
-      totalAmount: data.totalAmount,
-      type: 'order',
-    }).catch(e => this.logger.error('Yazici hatasi:', e))
 
     return order
   }

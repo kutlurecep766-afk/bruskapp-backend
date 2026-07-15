@@ -11,9 +11,6 @@ import { WhatsappModule } from './whatsapp/whatsapp.module'
 import { TelegramModule } from './telegram/telegram.module'
 import { InstagramModule } from './instagram/instagram.module'
 import { PushModule } from './push/push.module'
-import { TrendyolModule } from './trendyol/trendyol.module'
-import { HepsiburadaModule } from './hepsiburada/hepsiburada.module'
-import { KargomucuzModule } from './kargomucuz/kargomucuz.module'
 import { OrdersModule } from './orders/orders.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { WebchatModule } from './webchat/webchat.module'
@@ -23,17 +20,10 @@ import { AuthModule } from './auth/auth.module'
 import { LeadModule } from './lead/lead.module'
 import { PrismaModule } from './prisma.module'
 import { TenantsModule } from './tenants/tenants.module'
-import { ProductsModule } from './products/products.module'
 import { UploadsModule } from './uploads/uploads.module'
 import { PaymentsModule } from './payments/payments.module'
-import { PrinterModule } from './printer/printer.module'
 import { EInvoiceModule } from './einvoice/einvoice.module'
-import { YemeksepetiModule } from './yemeksepeti/yemeksepeti.module'
-import { MarketplaceModule } from './marketplace/marketplace.module'
-import { StockMovementsModule } from './stock-movements/stock-movements.module'
-import { PurchaseInvoicesModule } from './purchase-invoices/purchase-invoices.module'
 import { EncryptionModule } from './common/encryption.module'
-import { QueuesModule } from './queues/queues.module'
 import { ZernioModule } from './zernio/zernio.module'
 
 @Global()
@@ -64,11 +54,9 @@ import { ZernioModule } from './zernio/zernio.module'
       inject: [ConfigService],
     }),
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, PushModule,
-    KargomucuzModule,
-    OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, ProductsModule, UploadsModule, PrinterModule, EInvoiceModule,
-    MarketplaceModule,
-    StockMovementsModule, PurchaseInvoicesModule,
-    EncryptionModule, QueuesModule, ZernioModule,
+    OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, UploadsModule,
+    EInvoiceModule,
+    EncryptionModule, ZernioModule,
   ],
   controllers: [AppController],
   providers: [
