@@ -110,11 +110,13 @@ export class MessagesService {
           (SELECT COUNT(*) FROM "Message" m2
            WHERE m2.platform = m1.platform AND m2."from" = m1."from"
            AND m2.direction = 'incoming'
-           AND m2."createdAt" > (
-             SELECT COALESCE(MAX(m3."createdAt"), '1970-01-01'::timestamp)
-             FROM "Message" m3
-             WHERE m3.platform = m1.platform AND m3."from" = m1."from"
-             AND m3.direction = 'outgoing'
+           AND m2."createdAt" > GREATEST(
+             COALESCE((SELECT MAX(m3."createdAt") FROM "Message" m3
+               WHERE m3.platform = m1.platform AND m3."from" = m1."from"
+               AND m3.direction = 'outgoing'), '1970-01-01'::timestamp),
+             COALESCE((SELECT cr."lastReadAt" FROM "ConversationRead" cr
+               WHERE cr.platform = m1.platform AND cr."from" = m1."from"
+               AND cr."tenantId" = m1."tenantId"), '1970-01-01'::timestamp)
            )),
         0) as count
       FROM "Message" m1
@@ -135,6 +137,10 @@ export class MessagesService {
   }
 
   async markConversationRead(tenantId: string, platform: string, from: string) {
-    // Silently ignored – count is calculated server-side based on last outgoing reply
+    await this.prisma.conversationRead.upsert({
+      where: { tenantId_platform_from: { tenantId, platform, from } },
+      update: { lastReadAt: new Date() },
+      create: { tenantId, platform, from, lastReadAt: new Date() },
+    })
   }
 }

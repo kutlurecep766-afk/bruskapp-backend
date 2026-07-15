@@ -198,6 +198,16 @@ model Message {
   @@index([tenantId, createdAt])
 }
 
+model ConversationRead {
+  id        String   @id @default(uuid())
+  tenantId  String
+  platform  String
+  from      String
+  lastReadAt DateTime @default(now())
+
+  @@unique([tenantId, platform, from])
+}
+
 model Lead {
   id           Int      @id @default(autoincrement())
   sessionId    String
