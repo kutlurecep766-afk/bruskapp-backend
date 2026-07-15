@@ -118,6 +118,19 @@ export class MessagesController {
     return { success: true, messageId: msg.id }
   }
 
+  @Post('read')
+  async markRead(@Req() req: Request, @Query('platform') platform: string, @Query('from') from: string) {
+    const user = req.user as any
+    if (!user) throw new HttpException('Yetkilendirme gerekli', HttpStatus.UNAUTHORIZED)
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { users: { some: { id: user.userId } } },
+      select: { id: true },
+    })
+    if (!tenant) throw new HttpException('Isletme bulunamadi', HttpStatus.NOT_FOUND)
+    await this.messagesService.markConversationRead(tenant.id, platform, from)
+    return { success: true }
+  }
+
   @Get()
   async findAll(
     @Req() req: Request,

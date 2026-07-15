@@ -106,7 +106,17 @@ export class MessagesService {
         (SELECT "fromName" FROM "Message" m2 WHERE m2.platform = m1.platform AND m2."from" = m1."from" AND m2."fromName" IS NOT NULL ORDER BY m2."createdAt" DESC LIMIT 1) as "fromName",
         (SELECT content FROM "Message" m2 WHERE m2.platform = m1.platform AND m2."from" = m1."from" ORDER BY m2."createdAt" DESC LIMIT 1) as "lastContent",
         MAX("createdAt") as "lastMessageAt",
-        COUNT(*) as count
+        COALESCE(
+          (SELECT COUNT(*) FROM "Message" m2
+           WHERE m2.platform = m1.platform AND m2."from" = m1."from"
+           AND m2.direction = 'incoming'
+           AND m2."createdAt" > (
+             SELECT COALESCE(MAX(m3."createdAt"), '1970-01-01'::timestamp)
+             FROM "Message" m3
+             WHERE m3.platform = m1.platform AND m3."from" = m1."from"
+             AND m3.direction = 'outgoing'
+           )),
+        0) as count
       FROM "Message" m1
       WHERE "tenantId" = $1
       GROUP BY platform, "from"
@@ -122,5 +132,9 @@ export class MessagesService {
       lastMessageAt: r.lastMessageAt,
       count: Number(r.count),
     }))
+  }
+
+  async markConversationRead(tenantId: string, platform: string, from: string) {
+    // Silently ignored – count is calculated server-side based on last outgoing reply
   }
 }
