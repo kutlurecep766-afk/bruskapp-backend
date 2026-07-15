@@ -116,7 +116,7 @@ export class MessagesService {
                AND m3.direction = 'outgoing'), '1970-01-01'::timestamp),
              COALESCE((SELECT cr."lastReadAt" FROM "ConversationRead" cr
                WHERE cr.platform = m1.platform AND cr."from" = m1."from"
-               AND cr."tenantId" = m1."tenantId"), '1970-01-01'::timestamp)
+               AND cr."tenantId" = $1), '1970-01-01'::timestamp)
            )),
         0) as count
       FROM "Message" m1
