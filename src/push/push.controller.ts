@@ -27,16 +27,9 @@ export class PushController {
   @Public()
   @Get('favicon.svg')
   getFavicon(@Res() res: Response) {
-    const svg = `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stopColor="#2563eb"/>
-      <stop offset="100%" stopColor="#1d4ed8"/>
-    </linearGradient>
-  </defs>
-  <rect width="100" height="100" rx="22" fill="url(#brand)"/>
-  <rect x="6" y="6" width="88" height="88" rx="16" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="1.5"/>
-  <text x="50" y="70" fontFamily="'Inter','Segoe UI',Arial,sans-serif" fontSize="60" fontWeight="800" fill="white" textAnchor="middle">B</text>
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44">
+  <rect width="44" height="44" rx="10" fill="#2563eb"/>
+  <text x="22" y="30" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="26" font-weight="800" fill="white" text-anchor="middle" letter-spacing="-1">B</text>
 </svg>`
     res.setHeader('Content-Type', 'image/svg+xml')
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate')
@@ -60,7 +53,7 @@ export class PushController {
       orientation: "portrait-primary",
       icons: [
         {
-          src: "/logo.svg",
+          src: "/api/push/favicon.svg",
           sizes: "any",
           type: "image/svg+xml",
           purpose: "any maskable",
