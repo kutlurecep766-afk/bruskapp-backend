@@ -60,7 +60,7 @@ export class PushController {
       orientation: "portrait-primary",
       icons: [
         {
-          src: "/api/push/favicon.svg",
+          src: "/logo.svg",
           sizes: "any",
           type: "image/svg+xml",
           purpose: "any maskable",
