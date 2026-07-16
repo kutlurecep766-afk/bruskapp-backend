@@ -33,11 +33,53 @@ export class TelegramService implements OnModuleInit {
   }
 
   async onModuleInit() {
+    // Ana bot polling
     const paused = this.config.get('telegram_paused') === 'true'
-    if (paused) { this.logger.log('Bot baslatilmadi, devre disi'); return }
-    if (this.botToken) {
+    if (!paused && this.botToken) {
       await this.removeWebhook()
       this.startPolling()
+    }
+
+    // Multi-tenant bot webhooklarini yeniden kur
+    await this.reconnectAllTenantBots()
+  }
+
+  private async reconnectAllTenantBots() {
+    try {
+      if (!this.prisma) return
+      const configs = await this.prisma.telegramConfig.findMany({ where: { active: true } })
+      for (const tc of configs) {
+        try {
+          const test = await this.testConnection(tc.botToken)
+          if (test.success) {
+            await this.removeWebhook(tc.botToken)
+            const webhookUrl = 'https://bruskapp.com/api/telegram/webhook/' + tc.tenantId
+            const res = await lastValueFrom(this.http.post('https://api.telegram.org/bot' + tc.botToken + '/setWebhook', {
+              url: webhookUrl,
+              allowed_updates: ['message', 'callback_query'],
+            }))
+            if (res.data?.ok) {
+              this.logger.log('Tenant bot webhook yeniden kuruldu: ' + tc.tenantId)
+              // ConfigService'e de yaz ki handleTenantWebhook bulabilsin
+              this.config.set(this.telegramTokenKey(tc.tenantId), tc.botToken)
+              if (tc.botInfo) {
+                this.config.set(this.telegramInfoKey(tc.tenantId), JSON.stringify(tc.botInfo))
+              }
+            }
+          } else {
+            this.logger.warn('Tenant bot token gecersiz, devre disi: ' + tc.tenantId)
+            await this.prisma.telegramConfig.update({
+              where: { tenantId: tc.tenantId },
+              data: { active: false },
+            })
+          }
+        } catch (e: any) {
+          this.logger.error('Tenant bot yeniden baglama hatasi (' + tc.tenantId + '): ' + (e?.message || ''))
+        }
+      }
+      this.logger.log('Multi-tenant bot yeniden baglama tamam: ' + configs.length + ' bot')
+    } catch (e: any) {
+      this.logger.error('Multi-tenant bot yeniden baglama hatasi: ' + (e?.message || ''))
     }
   }
 
@@ -163,6 +205,14 @@ export class TelegramService implements OnModuleInit {
     if (test.botInfo) {
       this.config.set(this.telegramInfoKey(tenantId), JSON.stringify(test.botInfo))
     }
+    // DB'ye de kaydet (kalici depolama)
+    if (this.prisma) {
+      await this.prisma.telegramConfig.upsert({
+        where: { tenantId },
+        update: { botToken: token, botInfo: test.botInfo || undefined, active: true },
+        create: { tenantId, botToken: token, botInfo: test.botInfo || undefined, active: true },
+      }).catch(e => this.logger.error('TelegramConfig kaydetme hatasi: ' + e.message))
+    }
     this.logger.log('Tenant bot baglandi: ' + tenantId + ' -> @' + (test.botInfo?.username || ''))
     return { success: true, message: 'Bot basariyla baglandi', botInfo: test.botInfo }
   }
@@ -173,6 +223,12 @@ export class TelegramService implements OnModuleInit {
     await this.removeWebhook(token)
     this.config.set(this.telegramTokenKey(tenantId), '')
     this.config.set(this.telegramInfoKey(tenantId), '')
+    if (this.prisma) {
+      await this.prisma.telegramConfig.update({
+        where: { tenantId },
+        data: { active: false },
+      }).catch(() => {})
+    }
     return { success: true, message: 'Bot baglantisi kesildi' }
   }
 
@@ -215,19 +271,21 @@ export class TelegramService implements OnModuleInit {
       if (dsActive) {
         let systemPrompt = 'Sen yardimsever bir yapay zeka asistanisin. Kisa ve dogal cevaplar ver. Turkce konus.'
         if (this.webchatService) {
-          const wc = this.webchatService.getConfig()
-          const parts: string[] = []
-          if (wc.businessName) parts.push('Isletme Adi: ' + wc.businessName)
-          if (wc.description) parts.push('Aciklama: ' + wc.description)
-          if (wc.address) parts.push('Adres: ' + wc.address)
-          if (wc.phone) parts.push('Telefon: ' + wc.phone)
-          if (wc.email) parts.push('E-posta: ' + wc.email)
-          if (wc.hours) parts.push('Calisma Saatleri: ' + wc.hours)
-          if (wc.knowledgeBase) parts.push('BILGI HAVUZU:\n' + wc.knowledgeBase)
-          if (wc.systemPrompt) parts.push(wc.systemPrompt)
-          if (parts.length > 0) {
-            systemPrompt = 'Sen bir isletmenin yapay zeka asistanisin. Su bilgileri kullanarak kisa, dogal ve yardimsever cevaplar ver:\n\n' + parts.join('\n') + '\n\nSadece sana verilen bilgileri kullan. Bilmiyorsan uydurma, yonlendir.'
-          }
+          try {
+            const wc = await this.webchatService.getConfig(tenantId)
+            const parts: string[] = []
+            if (wc.businessName) parts.push('Isletme Adi: ' + wc.businessName)
+            if (wc.description) parts.push('Aciklama: ' + wc.description)
+            if (wc.address) parts.push('Adres: ' + wc.address)
+            if (wc.phone) parts.push('Telefon: ' + wc.phone)
+            if (wc.email) parts.push('E-posta: ' + wc.email)
+            if (wc.hours) parts.push('Calisma Saatleri: ' + wc.hours)
+            if (wc.knowledgeBase) parts.push('BILGI HAVUZU:\n' + wc.knowledgeBase)
+            if (wc.systemPrompt) parts.push(wc.systemPrompt)
+            if (parts.length > 0) {
+              systemPrompt = 'Sen bir isletmenin yapay zeka asistanisin. Su bilgileri kullanarak kisa, dogal ve yardimsever cevaplar ver:\n\n' + parts.join('\n') + '\n\nSadece sana verilen bilgileri kullan. Bilmiyorsan uydurma, yonlendir.'
+            }
+          } catch {}
         }
         try {
           const apiKey = this.config.get('DEEPSEEK_API_KEY')
@@ -247,6 +305,7 @@ export class TelegramService implements OnModuleInit {
           reply = choice?.message?.content || ''
         } catch (e: any) {
           this.logger.error('DeepSeek hatasi (tenant webhook): ' + (e?.message || ''))
+          await this.logError('ai_error', 'telegram', tenantId, 'DeepSeek API Hatasi', e?.message || 'Bilinmeyen hata', tenantId)
         }
       }
       if (!reply) {
@@ -269,6 +328,7 @@ export class TelegramService implements OnModuleInit {
         }
       } catch (e: any) {
         this.logger.error('Oto-yanit hatasi: ' + (e?.message || ''))
+        await this.logError('platform_error', 'telegram', tenantId, 'Mesaj gonderilemedi', e?.message || 'Bilinmeyen hata', tenantId)
       }
     }
     return true
@@ -306,6 +366,13 @@ export class TelegramService implements OnModuleInit {
       }))
       return !!res.data?.ok
     } catch { return false }
+  }
+
+  async sendAdminAlert(title: string, message: string): Promise<boolean> {
+    const chatId = this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID')
+    if (!this.botToken || !chatId) return false
+    const text = '🚨 <b>' + this.escapeHtml(title) + '</b>\n\n' + this.escapeHtml(message)
+    return this.sendMessage(chatId, text)
   }
 
   async sendNotification(title: string, message: string): Promise<boolean> {
@@ -412,5 +479,19 @@ export class TelegramService implements OnModuleInit {
       this.config.set('deepseek_paused', 'true')
       return { success: true, message: 'DeepSeek AI durduruldu, token tuketimi yok', active: false }
     }
+  }
+
+  private async logError(type: string, platform: string, tenantId: string, title: string, message: string, logTenantId?: string) {
+    try {
+      if (this.prisma) {
+        const err = await this.prisma.errorLog.create({
+          data: { type, platform, title, message: message?.slice(0, 1000) || '', tenantId: logTenantId || tenantId },
+        })
+        // Kritik hatalarda admin Telegram'a bildirim
+        if (type === 'platform_error' || type === 'ai_error') {
+          await this.sendAdminAlert(title, 'Platform: ' + platform + '\nTenant: ' + tenantId + '\nHata: ' + (message?.slice(0, 300) || ''))
+        }
+      }
+    } catch {}
   }
 }

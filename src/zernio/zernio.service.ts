@@ -31,6 +31,43 @@ export class ZernioService implements OnModuleInit {
   async onModuleInit() {
     if (this.apiKey) {
       await this.ensureWebhook()
+      await this.reconnectAllProfiles()
+    }
+  }
+
+  private async reconnectAllProfiles() {
+    try {
+      const connections = await this.prisma.zernioConnection.findMany({ where: { profileId: { not: null } } })
+      this.logger.log('Zernio profil yeniden baglaniyor: ' + connections.length + ' profil')
+
+      for (const conn of connections) {
+        if (!conn.profileId) continue
+        try {
+          const res = await lastValueFrom(this.http.get(this.apiBase + '/profiles/' + conn.profileId, {
+            headers: this.headers(),
+            timeout: 10000,
+          }))
+          if (res.data?.profile?._id) {
+            this.logger.log('Profil dogrulandi: ' + conn.tenantId + ' -> ' + conn.profileId)
+          }
+        } catch (e: any) {
+          const status = e?.response?.status
+          if (status === 404) {
+            this.logger.warn('Profil bulunamadi, yeniden olusturuluyor: ' + conn.tenantId)
+            const tenant = await this.prisma.tenant.findUnique({ where: { id: conn.tenantId }, select: { name: true } })
+            const name = tenant?.name || 'Bruskapp-' + conn.tenantId.substring(0, 8)
+            try {
+              await this.createProfile(conn.tenantId, name)
+            } catch (createErr: any) {
+              this.logger.error('Profil yeniden olusturma hatasi (' + conn.tenantId + '): ' + (createErr?.message || ''))
+            }
+          } else {
+            this.logger.warn('Profil kontrol hatasi (' + conn.tenantId + '): ' + (e?.message || ''))
+          }
+        }
+      }
+    } catch (e: any) {
+      this.logger.error('Profil yeniden baglama hatasi: ' + (e?.message || ''))
     }
   }
 

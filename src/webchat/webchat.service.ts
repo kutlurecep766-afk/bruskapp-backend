@@ -1,7 +1,5 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
-import * as fs from 'fs'
-import * as path from 'path'
 
 export interface Product {
   name: string
@@ -66,52 +64,67 @@ const DEFAULT_CONFIG: ChatBotConfig = {
 
 @Injectable()
 export class WebchatService {
-  private config: ChatBotConfig = { ...DEFAULT_CONFIG }
   private conversations = new Map<string, Conversation>()
-  private configPath: string
   private aiApiKey: string
   private aiModel: string
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
   constructor(private prisma: PrismaService) {
-    this.configPath = path.join(process.cwd(), 'data', 'chatbot-config.json')
     this.aiApiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
     this.aiModel = process.env.AI_MODEL || 'deepseek-chat'
-    this.loadConfig()
   }
 
-  private loadConfig() {
-    try {
-      if (fs.existsSync(this.configPath)) {
-        const data = JSON.parse(fs.readFileSync(this.configPath, 'utf-8'))
-        this.config = { ...DEFAULT_CONFIG, ...data }
-      }
-    } catch {}
-  }
-
-  private saveConfig() {
-    try {
-      const dir = path.dirname(this.configPath)
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-      fs.writeFileSync(this.configPath, JSON.stringify(this.config, null, 2))
-    } catch {}
-  }
-
-  getConfig(): ChatBotConfig {
-    return { ...this.config }
-  }
-
-
-
-  updateConfig(updates: Partial<ChatBotConfig>): ChatBotConfig {
-    // Bilgi havuzu bos gonderilse bile koru (admin panel form reset vs)
-    if (!updates.knowledgeBase && this.config.knowledgeBase) {
-      (updates as any).knowledgeBase = this.config.knowledgeBase
+  private defaultConfig(tenantName?: string): ChatBotConfig {
+    return {
+      ...DEFAULT_CONFIG,
+      businessName: tenantName || DEFAULT_CONFIG.businessName,
     }
-    this.config = { ...this.config, ...updates }
-    this.saveConfig()
-    return this.getConfig()
+  }
+
+  async getConfig(tenantId: string): Promise<ChatBotConfig> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { webchatConfig: true, name: true },
+    })
+    if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
+      return { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
+    }
+    return this.defaultConfig(tenant?.name)
+  }
+
+  async getPublicConfig(slug: string): Promise<{ businessName: string; welcomeMessage: string; products: any[] }> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { slug },
+      select: { webchatConfig: true, name: true },
+    })
+    const cfg = tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0
+      ? { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
+      : this.defaultConfig(tenant?.name)
+    return {
+      businessName: cfg.businessName,
+      welcomeMessage: cfg.welcomeMessage,
+      products: cfg.products,
+    }
+  }
+
+  async updateConfig(tenantId: string, updates: Partial<ChatBotConfig>): Promise<ChatBotConfig> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { webchatConfig: true, name: true },
+    })
+    const current = tenant?.webchatConfig && typeof tenant.webchatConfig === 'object'
+      ? { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
+      : this.defaultConfig(tenant?.name)
+    if (!updates.knowledgeBase && current.knowledgeBase) {
+      (updates as any).knowledgeBase = current.knowledgeBase
+    }
+    const merged = { ...current, ...updates }
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { webchatConfig: merged as any },
+    })
+    return merged
   }
 
   getOrCreateConversation(sessionId: string): Conversation {
@@ -120,12 +133,10 @@ export class WebchatService {
       conv = { messages: [], lastActivity: Date.now() }
       this.conversations.set(sessionId, conv)
     }
-
     const now = Date.now()
     for (const [id, c] of this.conversations) {
       if (now - c.lastActivity > 3600000) this.conversations.delete(id)
     }
-
     return conv
   }
 
@@ -169,16 +180,13 @@ export class WebchatService {
     if (!this.checkSessionRate(sessionId)) {
       return 'Çok fazla mesaj gönderdiniz. Lütfen biraz bekleyin.'
     }
-
     if (clientIp && !this.checkGlobalRate(clientIp)) {
       return 'Çok fazla talep algılandı. Lütfen daha sonra tekrar deneyin.'
     }
-
     const cleaned = this.sanitizeInput(message)
     if (!cleaned) {
       return 'Lütfen geçerli bir mesaj yazın.'
     }
-
     if (cleaned.length > 500) {
       const short = cleaned.slice(0, 500) + '... [devamı kesildi]'
       const conv = this.getOrCreateConversation(sessionId)
@@ -188,22 +196,30 @@ export class WebchatService {
       conv.messages.push({ role: 'assistant', content: response })
       await this.syncLead(sessionId, cleaned, response, conv).catch(() => {}); return response
     }
-
     const conv = this.getOrCreateConversation(sessionId)
     if (conv.messages.length >= MAX_CONV_MSGS * 2) {
       conv.messages.splice(0, 4)
     }
-
     conv.messages.push({ role: 'user', content: cleaned })
     conv.lastActivity = Date.now()
-
     const response = await this.generateResponse(cleaned, conv, sessionId, cleaned)
     conv.messages.push({ role: 'assistant', content: response })
     await this.syncLead(sessionId, cleaned, response, conv).catch(() => {}); return response
   }
 
-  private buildBaseSystem(): string {
-    const c = this.config
+  private async loadConfigForSlug(slug: string): Promise<ChatBotConfig> {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { slug },
+      select: { webchatConfig: true, name: true },
+    })
+    if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
+      return { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
+    }
+    return this.defaultConfig(tenant?.name)
+  }
+
+  private buildBaseSystem(config: ChatBotConfig): string {
+    const c = config
     let prompt = `Sen ${c.businessName} işletmesinin yapay zeka asistanısın.\n`
     prompt += `İşletme: ${c.description} | Adres: ${c.address} | E-posta: ${c.email} | Telefon: ${c.phone || 'Yok'} | Çalışma: ${c.hours}\n`
     prompt += `Karşılama: ${c.welcomeMessage}\n`
@@ -222,8 +238,8 @@ export class WebchatService {
     return prompt
   }
 
-  private buildContext(message: string): string {
-    const c = this.config
+  private buildContext(config: ChatBotConfig, message: string): string {
+    const c = config
     const lower = message.toLowerCase().trim()
     const parts: string[] = []
 
@@ -262,15 +278,14 @@ export class WebchatService {
     return parts.length > 0 ? parts.join('\n') : ''
   }
 
-  private async callAI(messages: Message[]): Promise<string | null> {
-    // Anti-timing: constant small delay to prevent timing attacks
+  private async callAI(messages: Message[], config: ChatBotConfig): Promise<string | null> {
     await new Promise(r => setTimeout(r, 50 + Math.random() * 50))
     if (!this.aiApiKey) return null
 
     try {
       const userMsg = messages.filter(m => m.role === 'user').pop()?.content || ''
-      const baseSystem = this.buildBaseSystem()
-      const context = this.buildContext(userMsg)
+      const baseSystem = this.buildBaseSystem(config)
+      const context = this.buildContext(config, userMsg)
 
       const aiMessages: Message[] = [
         { role: 'system', content: baseSystem }
@@ -306,7 +321,6 @@ export class WebchatService {
 
       if (!res.ok) {
         const err = await res.text()
-        console.error('AI API error:', res.status, err)
         return null
       }
 
@@ -317,17 +331,11 @@ export class WebchatService {
       const sanitized = this.sanitizeResponse(content)
 
       if (this.checkHarmful(sanitized)) {
-        console.warn('Harmful content blocked in AI response')
         return 'Bu konuda size yardımcı olamıyorum. Başka bir sorunuz mu var?'
       }
 
       return sanitized
     } catch (e: any) {
-      if (e?.name === 'AbortError') {
-        console.error('AI API timeout')
-      } else {
-        console.error('AI API exception:', e)
-      }
       return null
     }
   }
@@ -385,31 +393,32 @@ export class WebchatService {
   }
 
   async generateResponse(message: string, conv?: Conversation, sessionId = '', cleaned = ''): Promise<string> {
+    const slug = sessionId?.split(':')[0] || 'default'
+    const config = await this.loadConfigForSlug(slug)
+
     if (!conv) {
       conv = { messages: [], lastActivity: Date.now() }
       conv.messages.push({ role: 'user', content: message })
     }
     const lower = message.toLowerCase().trim()
 
-    // Once AI dene
-    const aiResponse = await this.callAI(conv.messages)
+    const aiResponse = await this.callAI(conv.messages, config)
     if (aiResponse) return aiResponse
 
-    // AI yoksa fallback
-    for (const faq of this.config.faqs) {
+    for (const faq of config.faqs) {
       const q = faq.question.toLowerCase()
       const qWords = q.split(/\s+/).filter((w: string) => w.length > 2)
       const matched = qWords.filter((w: string) => lower.includes(w))
       if (matched.length >= Math.ceil(qWords.length * 0.6)) return faq.answer
     }
 
-    const matchedProducts = this.config.products.filter(p => {
+    const matchedProducts = config.products.filter(p => {
       const name = p.name.toLowerCase()
       return lower.includes(name)
     })
 
     if (this.hasAnyWord(lower, ['merhaba', 'selam', 'hey', 'hi', 'hello', 'iyi gunler', 'günaydin', 'tünaydin', 'iyi aksamlar', 'kolay gelsin'])) {
-      return this.config.welcomeMessage
+      return config.welcomeMessage
     }
 
     if (matchedProducts.length >= 1 && this.hasAnyWord(lower, ['fiyat', 'kac para', 'ne kadar', 'ucret'])) {
@@ -423,27 +432,23 @@ export class WebchatService {
     }
 
     if (this.hasAnyWord(lower, ['adres', 'nerede', 'konum', 'telefon', 'iletisim', 'ulas', 'email', 'mail'])) {
-      return `Bize ulasin:\nE-posta: ${this.config.email}\nAdres: ${this.config.address}\nCalisma saatleri: ${this.config.hours}`
+      return `Bize ulasin:\nE-posta: ${config.email}\nAdres: ${config.address}\nCalisma saatleri: ${config.hours}`
     }
 
     if (this.hasAnyWord(lower, ['tesekkur', 'sagol', 'eyvallah', 'tamamdir', 'anladim'])) {
       return 'Rica ederim!'
     }
 
-    return this.config.welcomeMessage
+    return config.welcomeMessage
   }
-
 
   private async syncLead(sessionId: string, message: string, response: string, conv: Conversation) {
     try {
-      // Extract info from message
       const namePattern = /(?:benim adım|adim|bana da|ben|bana) (.+?)(?:[,.]|\s|$)/i
       const phonePattern = /(0[0-9]{10}|05[0-9]{9}|\+90[0-9]{10}|5[0-9]{9}|\+90[0-9]{12})/g
       const nameMatch = message.match(namePattern)
       const phoneMatch = message.match(phonePattern)
-      const isContactReq = /(?:whatsapp|watsap|ulaş|iletişim|telefon|ara|numara)/i.test(message) && /(?:istiyor|ister|ver|yaz|bırak|bilgi|alabilir|misin)/i.test(message)
 
-      // For EVERY session, upsert a lead record
       const userMsgs = conv.messages.filter(m => m.role === 'user').map(m => m.content)
       const needs = userMsgs.join(' | ').slice(0, 500)
       const convJson = JSON.parse(JSON.stringify(conv.messages.slice(-30)))
@@ -451,7 +456,6 @@ export class WebchatService {
       const existing = await this.prisma.lead.findFirst({ where: { sessionId }, orderBy: { createdAt: 'desc' } })
 
       if (existing) {
-        // Update conversation and needs, and name/phone if newly found
         const updateData: any = {
           conversation: convJson,
           needs: needs,

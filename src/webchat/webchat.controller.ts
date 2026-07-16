@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Put, Body, Req } from '@nestjs/common'
+import { Controller, Post, Get, Put, Body, Req, Query, Param } from '@nestjs/common'
 import { WebchatService, ChatBotConfig } from './webchat.service'
 import { Public } from '../auth/public.decorator'
 import { WebchatMessageDto } from './webchat.dto'
@@ -20,22 +20,19 @@ export class WebchatController {
 
   @Public()
   @Get('config/public')
-  async getPublicConfig(): Promise<{ businessName: string; welcomeMessage: string; products: any[] }> {
-    const config = this.webchat.getConfig()
-    return {
-      businessName: config.businessName,
-      welcomeMessage: config.welcomeMessage,
-      products: config.products,
-    }
+  async getPublicConfig(@Query('slug') slug?: string): Promise<{ businessName: string; welcomeMessage: string; products: any[] }> {
+    return this.webchat.getPublicConfig(slug || 'default')
   }
 
   @Get('config')
-  async getConfig(): Promise<ChatBotConfig> {
-    return this.webchat.getConfig()
+  async getConfig(@Req() req: any): Promise<ChatBotConfig> {
+    const tenantId = req.user?.tenantId || 'default'
+    return this.webchat.getConfig(tenantId)
   }
 
   @Put('config')
-  async updateConfig(@Body() body: Partial<ChatBotConfig>): Promise<ChatBotConfig> {
-    return this.webchat.updateConfig(body)
+  async updateConfig(@Req() req: any, @Body() body: Partial<ChatBotConfig>): Promise<ChatBotConfig> {
+    const tenantId = req.user?.tenantId || 'default'
+    return this.webchat.updateConfig(tenantId, body)
   }
 }
