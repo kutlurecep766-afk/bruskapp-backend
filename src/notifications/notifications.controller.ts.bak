@@ -134,17 +134,19 @@ export class NotificationsController {
 
   @Public()
   @Get('telegram-config')
-  async getTelegramConfig(@Req() req: any) {
-    return this.notificationsService.getTelegramConfig(req.user?.tenantId || '')
+  async getTelegramConfig() {
+    return this.notificationsService.getTelegramConfig()
   }
 
+  @Public()
   @Post('telegram-config')
-  async setTelegramConfig(@Req() req: any, @Body() body: { botToken: string; chatId: string }) {
-    return this.notificationsService.setTelegramConfig(body.botToken, body.chatId, req.user?.tenantId || '')
+  async setTelegramConfig(@Body() body: { botToken: string; chatId: string }) {
+    return this.notificationsService.setTelegramConfig(body.botToken, body.chatId)
   }
 
+  @Public()
   @Post('telegram-toggle')
-  async toggleTelegram(@Req() req: any, @Body() body: { enabled: boolean }) {
-    return this.notificationsService.toggleTelegram(body.enabled, req.user?.tenantId || '')
+  async toggleTelegram(@Body() body: { enabled: boolean }) {
+    return this.notificationsService.toggleTelegram(body.enabled)
   }
 }

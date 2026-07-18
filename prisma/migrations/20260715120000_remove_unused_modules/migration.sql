@@ -1,0 +1,14 @@
+-- Drop unused tables
+DROP TABLE IF EXISTS MarketplaceOrderItem CASCADE;
+DROP TABLE IF EXISTS MarketplaceOrder CASCADE;
+DROP TABLE IF EXISTS MarketplaceProduct CASCADE;
+DROP TABLE IF EXISTS StockMovement CASCADE;
+DROP TABLE IF EXISTS PurchaseInvoiceItem CASCADE;
+DROP TABLE IF EXISTS PurchaseInvoice CASCADE;
+DROP TABLE IF EXISTS ProductVariant CASCADE;
+DROP TABLE IF EXISTS Product CASCADE;
+
+-- Drop unused columns
+ALTER TABLE Tenant DROP COLUMN IF EXISTS marketplaceApiKeys;
+ALTER TABLE Tenant DROP COLUMN IF EXISTS printerConfig;
+ALTER TABLE Notification DROP COLUMN IF EXISTS productId;

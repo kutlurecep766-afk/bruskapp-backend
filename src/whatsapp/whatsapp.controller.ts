@@ -211,7 +211,7 @@ export class WhatsappController {
               this.whatsappService.markAsRead(tenantId, msg.id, true)
             }
 
-            const reply = await this.webchatService.generateResponse(text)
+            const reply = await this.webchatService.generatePlatformResponse(tenantId, "whatsapp", from, text)
             if (reply && msg.id) {
               const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
               const aiMsgId = sendResult.messageId

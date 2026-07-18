@@ -25,6 +25,7 @@ import { PaymentsModule } from './payments/payments.module'
 import { EInvoiceModule } from './einvoice/einvoice.module'
 import { EncryptionModule } from './common/encryption.module'
 import { ZernioModule } from './zernio/zernio.module'
+import { AnalyticsModule } from './analytics/analytics.module'
 import { ErrorLogModule } from './error-log/error-log.module'
 import { HealthCheckModule } from './health-check/health-check.module'
 
@@ -58,7 +59,7 @@ import { HealthCheckModule } from './health-check/health-check.module'
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, PushModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, UploadsModule,
     EInvoiceModule,
-    EncryptionModule, ZernioModule, ErrorLogModule, HealthCheckModule,
+    EncryptionModule, ZernioModule, AnalyticsModule, ErrorLogModule, HealthCheckModule,
   ],
   controllers: [AppController],
   providers: [

@@ -392,9 +392,48 @@ export class WebchatService {
     return clean
   }
 
-  async generateResponse(message: string, conv?: Conversation, sessionId = '', cleaned = ''): Promise<string> {
-    const slug = sessionId?.split(':')[0] || 'default'
-    const config = await this.loadConfigForSlug(slug)
+  async generatePlatformResponse(tenantId: string, platform: string, userId: string, message: string): Promise<string> {
+    const sessionKey = `${platform}:${tenantId}:${userId}`
+
+    if (!this.checkSessionRate(sessionKey)) {
+      return 'Çok fazla mesaj gönderdiniz. Lütfen biraz bekleyin.'
+    }
+
+    const cleaned = this.sanitizeInput(message)
+    if (!cleaned) {
+      return 'Lütfen geçerli bir mesaj yazın.'
+    }
+
+    if (cleaned.length > 500) {
+      const short = cleaned.slice(0, 500) + '... [devamı kesildi]'
+      const conv = this.getOrCreateConversation(sessionKey)
+      conv.messages.push({ role: 'user', content: short })
+      conv.lastActivity = Date.now()
+      const response = await this.generateResponse(short, conv, '', short, tenantId)
+      conv.messages.push({ role: 'assistant', content: response })
+      return response
+    }
+
+    const conv = this.getOrCreateConversation(sessionKey)
+    if (conv.messages.length >= MAX_CONV_MSGS * 2) {
+      conv.messages.splice(0, 4)
+    }
+
+    conv.messages.push({ role: 'user', content: cleaned })
+    conv.lastActivity = Date.now()
+    const response = await this.generateResponse(cleaned, conv, '', cleaned, tenantId)
+    conv.messages.push({ role: 'assistant', content: response })
+    return response
+  }
+
+  async generateResponse(message: string, conv?: Conversation, sessionId = '', cleaned = '', tenantId?: string): Promise<string> {
+    let config: ChatBotConfig
+    if (tenantId) {
+      config = await this.getConfig(tenantId)
+    } else {
+      const slug = sessionId?.split(':')[0] || 'default'
+      config = await this.loadConfigForSlug(slug)
+    }
 
     if (!conv) {
       conv = { messages: [], lastActivity: Date.now() }

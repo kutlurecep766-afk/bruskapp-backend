@@ -157,7 +157,7 @@ export class InstagramController {
               if (monthCount >= limit) continue
             }
 
-            const reply = await this.webchatService.generateResponse(msg.text)
+            const reply = await this.webchatService.generatePlatformResponse(tenantId, "instagram", senderId, msg.text)
             if (reply) {
               await this.instagramService.sendMessage(tenantId, senderId, reply)
               await this.messagesService.create({

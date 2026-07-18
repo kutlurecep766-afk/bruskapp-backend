@@ -267,45 +267,12 @@ export class TelegramService implements OnModuleInit {
 
     if (chatId && msg.text) {
       let reply = ''
-      const dsActive = !!this.config.get('DEEPSEEK_API_KEY')
-      if (dsActive) {
-        let systemPrompt = 'Sen yardimsever bir yapay zeka asistanisin. Kisa ve dogal cevaplar ver. Turkce konus.'
-        if (this.webchatService) {
-          try {
-            const wc = await this.webchatService.getConfig(tenantId)
-            const parts: string[] = []
-            if (wc.businessName) parts.push('Isletme Adi: ' + wc.businessName)
-            if (wc.description) parts.push('Aciklama: ' + wc.description)
-            if (wc.address) parts.push('Adres: ' + wc.address)
-            if (wc.phone) parts.push('Telefon: ' + wc.phone)
-            if (wc.email) parts.push('E-posta: ' + wc.email)
-            if (wc.hours) parts.push('Calisma Saatleri: ' + wc.hours)
-            if (wc.knowledgeBase) parts.push('BILGI HAVUZU:\n' + wc.knowledgeBase)
-            if (wc.systemPrompt) parts.push(wc.systemPrompt)
-            if (parts.length > 0) {
-              systemPrompt = 'Sen bir isletmenin yapay zeka asistanisin. Su bilgileri kullanarak kisa, dogal ve yardimsever cevaplar ver:\n\n' + parts.join('\n') + '\n\nSadece sana verilen bilgileri kullan. Bilmiyorsan uydurma, yonlendir.'
-            }
-          } catch {}
-        }
+      if (this.webchatService) {
         try {
-          const apiKey = this.config.get('DEEPSEEK_API_KEY')
-          const res = await lastValueFrom(this.http.post('https://api.deepseek.com/v1/chat/completions', {
-            model: 'deepseek-chat',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: msg.text },
-            ],
-            temperature: 0.3,
-            max_tokens: 500,
-          }, {
-            headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
-            timeout: 15000,
-          }))
-          const choice = res.data?.choices?.[0]
-          reply = choice?.message?.content || ''
+          reply = await this.webchatService.generatePlatformResponse(tenantId, "telegram", from, msg.text)
         } catch (e: any) {
-          this.logger.error('DeepSeek hatasi (tenant webhook): ' + (e?.message || ''))
-          await this.logError('ai_error', 'telegram', tenantId, 'DeepSeek API Hatasi', e?.message || 'Bilinmeyen hata', tenantId)
+          this.logger.error('WebchatService hatasi (tenant webhook): ' + (e?.message || ''))
+          await this.logError('ai_error', 'telegram', tenantId, 'AI yanit hatasi', e?.message || 'Bilinmeyen hata', tenantId)
         }
       }
       if (!reply) {
@@ -375,6 +342,16 @@ export class TelegramService implements OnModuleInit {
     return this.sendMessage(chatId, text)
   }
 
+  async sendDirectMessage(botToken: string, chatId: string, title: string, message: string): Promise<boolean> {
+    const text = '📊 <b>' + this.escapeHtml(title) + '</b>\n\n' + this.escapeHtml(message)
+    try {
+      const res = await lastValueFrom(this.http.post('https://api.telegram.org/bot' + botToken + '/sendMessage', {
+        chat_id: chatId, text, parse_mode: 'HTML',
+      }))
+      return !!res.data?.ok
+    } catch { return false }
+  }
+
   async sendNotification(title: string, message: string): Promise<boolean> {
     const chatId = this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID')
     if (!this.botToken || !chatId) return false
@@ -386,36 +363,17 @@ export class TelegramService implements OnModuleInit {
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   }
 
-  private async chatWithDeepSeek(userMsg: string): Promise<string> {
-    const apiKey = this.config.get('DEEPSEEK_API_KEY')
-    if (!apiKey) return ''
-    const paused = this.config.get('deepseek_paused') === 'true'
-    if (paused) return ''
-    try {
-      const res = await lastValueFrom(this.http.post('https://api.deepseek.com/v1/chat/completions', {
-        model: 'deepseek-chat',
-        messages: [
-          { role: 'system', content: 'Sen bruskapp.com\'un yapay zeka asistanisin. Kisa, dogal ve yardimsever cevaplar ver. Turkce konus.' },
-          { role: 'user', content: userMsg },
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-      }, {
-        headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
-      }))
-      const choice = res.data?.choices?.[0]
-      return choice?.message?.content || ''
-    } catch (e: any) {
-      this.logger.error('DeepSeek hatasi: ' + (e?.message || 'bilinmeyen'))
-      return ''
-    }
-  }
-
   async autoReply(chatId: string, incomingText: string, from?: string): Promise<void> {
     let reply = ''
-    const dsActive = !!this.config.get('DEEPSEEK_API_KEY') && this.config.get('deepseek_paused') !== 'true'
-    if (dsActive) {
-      reply = await this.chatWithDeepSeek(incomingText)
+    if (this.webchatService && this.prisma && from) {
+      try {
+        const tenant = await this.prisma.tenant.findFirst({ where: { slug: 'default' }, select: { id: true } })
+        if (tenant) {
+          reply = await this.webchatService.generatePlatformResponse(tenant.id, 'telegram', from, incomingText)
+        }
+      } catch (e: any) {
+        this.logger.error('WebchatService hatasi (autoReply): ' + (e?.message || ''))
+      }
     }
     if (!reply) {
       reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'

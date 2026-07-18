@@ -100,26 +100,21 @@ async sendTest(platform: string) {
     )
   }
 
-  async getTelegramConfig(tenantId: string) {
-    if (!tenantId) return { botToken: '', chatId: '', configured: false, enabled: false }
-    const tokenKey = 'TELEGRAM_BOT_TOKEN_' + tenantId
-    const chatKey = 'TELEGRAM_NOTIFICATION_CHAT_ID_' + tenantId
-    const enabledKey = 'TELEGRAM_NOTIFICATIONS_ENABLED_' + tenantId
+  async getTelegramConfig() {
     return {
-      botToken: this.config.get(tokenKey) ? this.maskToken(this.config.get(tokenKey)) : '',
-      chatId: this.config.get(chatKey) || '',
-      configured: !!(this.config.get(tokenKey) && this.config.get(chatKey)),
-      enabled: this.config.get(enabledKey, 'true') === 'true',
+      botToken: this.config.get('TELEGRAM_BOT_TOKEN') ? this.maskToken(this.config.get('TELEGRAM_BOT_TOKEN')) : '',
+      chatId: this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID') || '',
+      configured: !!(this.config.get('TELEGRAM_BOT_TOKEN') && this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID')),
+      enabled: this.config.get('TELEGRAM_NOTIFICATIONS_ENABLED', 'true') === 'true',
     }
   }
 
-  async setTelegramConfig(botToken: string, chatId: string, tenantId: string) {
+  async setTelegramConfig(botToken: string, chatId: string) {
     const testResult = await this.telegram.testConnection(botToken)
     if (!testResult.success) return { success: false, message: testResult.message }
-    if (!tenantId) return { success: false, message: 'Tenant bulunamadi' }
 
-    this.config.set('TELEGRAM_BOT_TOKEN_' + tenantId, botToken)
-    this.config.set('TELEGRAM_NOTIFICATION_CHAT_ID_' + tenantId, chatId)
+    this.config.set('TELEGRAM_BOT_TOKEN', botToken)
+    this.config.set('TELEGRAM_NOTIFICATION_CHAT_ID', chatId)
 
     await this.telegram['removeWebhook']()
     this.telegram['startPolling']()
@@ -133,9 +128,8 @@ async sendTest(platform: string) {
     }
   }
 
-  async toggleTelegram(enabled: boolean, tenantId: string) {
-    const enabledKey = 'TELEGRAM_NOTIFICATIONS_ENABLED_' + tenantId
-    this.config.set(enabledKey, enabled ? 'true' : 'false')
+  async toggleTelegram(enabled: boolean) {
+    this.config.set('TELEGRAM_NOTIFICATIONS_ENABLED', enabled ? 'true' : 'false')
     return { enabled, message: enabled ? 'Telegram bildirimleri aktif' : 'Telegram bildirimleri devre disi' }
   }
 
