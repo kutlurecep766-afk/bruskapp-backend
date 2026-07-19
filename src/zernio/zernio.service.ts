@@ -94,7 +94,7 @@ export class ZernioService implements OnModuleInit {
         name: 'Bruskapp',
         url: this.webhookUrl,
         secret,
-        events: ['message.received', 'account.connected', 'account.disconnected'],
+        events: ['message.received', 'comment.received', 'account.connected', 'account.disconnected'],
         isActive: true,
       }, { headers: this.headers() }))
       const webhook = res.data?.webhook
@@ -331,6 +331,33 @@ export class ZernioService implements OnModuleInit {
               direction: 'incoming',
             },
           }).catch(e => this.logger.error('Mesaj kaydetme hatasi: ' + e.message))
+        }
+      }
+    }
+
+    if (event === 'comment.received') {
+      const profileId = payload?.account?.profileId || payload?.profileId
+      if (profileId) {
+        const conn = await this.prisma.zernioConnection.findFirst({ where: { profileId } })
+        if (conn?.tenantId) {
+          const platform = payload?.account?.platform || 'instagram'
+          const commentId = payload?.comment?._id || payload?._id || ''
+          const text = payload?.comment?.text || payload?.text || payload?.message || ''
+          const author = payload?.comment?.author?.name || payload?.from?.name || payload?.from || 'Bilinmiyor'
+          if (text && commentId) {
+            try {
+              await this.prisma.comment.create({
+                data: {
+                  tenantId: conn.tenantId,
+                  platform: 'zernio_' + platform,
+                  commentId,
+                  author,
+                  content: text,
+                  status: 'pending',
+                },
+              }).catch(e => this.logger.error('Zernio comment save error: ' + e.message))
+            } catch (e) { this.logger.error('Zernio comment error: ' + e.message) }
+          }
         }
       }
     }

@@ -20,6 +20,7 @@ model Tenant {
   storefrontConfig Json @default("{}")
   apiKeys      Json     @default("{}")
   features      Json     @default("{}")
+  messageCredit Int      @default(0)
   einvoiceConfig Json   @default("{}")
   webchatConfig Json     @default("{}")
   adminChatId   String?
@@ -33,6 +34,8 @@ model Tenant {
   zernioConnection ZernioConnection?
   telegramConfig TelegramConfig?
   errorLogs     ErrorLog[]
+  creditLogs    CreditLog[]
+  weeklyWheels  WeeklyWheel[]
 }
 
 model PaymentTransaction {
@@ -263,4 +266,109 @@ model ErrorLog {
   @@index([tenantId, createdAt])
   @@index([type, createdAt])
   @@index([acknowledged])
+}
+
+
+model CreditLog {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  amount    Int
+  reason    String
+  adminId   String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model WeeklyWheel {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  status    String   @default("pending")
+  result    Int?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([tenantId, status])
+}
+
+
+
+model Campaign {
+  id          String   @id @default(uuid())
+  tenantId    String
+  title       String
+  description String   @default("")
+  type        String   @default("discount")
+  discount    Int?
+  code        String?
+  startDate   DateTime?
+  endDate     DateTime?
+  status      String   @default("draft")
+  target      String   @default("all")
+  sentCount   Int      @default(0)
+  clickCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, status])
+}
+
+model BulkMessage {
+  id          String   @id @default(uuid())
+  tenantId    String
+  title       String
+  message     String
+  platform    String   @default("all")
+  status      String   @default("draft")
+  totalCount  Int      @default(0)
+  sentCount   Int      @default(0)
+  failedCount Int      @default(0)
+  fileData    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+}
+
+model ReminderTemplate {
+  id        String   @id @default(uuid())
+  tenantId  String
+  title     String
+  type      String   @default("appointment")
+  message   String
+  platform  String   @default("all")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, type])
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  tenantId  String
+  platform  String
+  commentId String
+  author    String
+  content   String
+  mediaUrl  String?
+  status    String   @default("pending")
+  reply     String?
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, platform, status])
+}
+
+model ReportSchedule {
+  id        String   @id @default(uuid())
+  tenantId  String  @unique
+  enabled   Boolean  @default(false)
+  time      String   @default("09:00")
+  lastSent  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

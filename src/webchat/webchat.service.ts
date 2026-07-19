@@ -1,4 +1,5 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common'
+import { TenantsService } from '../tenants/tenants.service'
 import { PrismaService } from '../prisma.service'
 
 export interface Product {
@@ -70,7 +71,7 @@ export class WebchatService {
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
-  constructor(private prisma: PrismaService) {
+  constructor(private prisma: PrismaService, private tenantsService: TenantsService) {
     this.aiApiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
     this.aiModel = process.env.AI_MODEL || 'deepseek-chat'
   }
@@ -392,16 +393,16 @@ export class WebchatService {
     return clean
   }
 
-  async generatePlatformResponse(tenantId: string, platform: string, userId: string, message: string): Promise<string> {
+  async generatePlatformResponse(tenantId: string, platform: string, userId: string, message: string): Promise<string | null> {
     const sessionKey = `${platform}:${tenantId}:${userId}`
 
     if (!this.checkSessionRate(sessionKey)) {
-      return 'Çok fazla mesaj gönderdiniz. Lütfen biraz bekleyin.'
+      return null
     }
 
     const cleaned = this.sanitizeInput(message)
     if (!cleaned) {
-      return 'Lütfen geçerli bir mesaj yazın.'
+      return null
     }
 
     if (cleaned.length > 500) {
@@ -409,8 +410,11 @@ export class WebchatService {
       const conv = this.getOrCreateConversation(sessionKey)
       conv.messages.push({ role: 'user', content: short })
       conv.lastActivity = Date.now()
+      const hasCredit = await this.checkCredit(tenantId)
+      if (!hasCredit) return null
       const response = await this.generateResponse(short, conv, '', short, tenantId)
       conv.messages.push({ role: 'assistant', content: response })
+      this.tenantsService.deductCredit(tenantId).catch(() => {})
       return response
     }
 
@@ -421,8 +425,23 @@ export class WebchatService {
 
     conv.messages.push({ role: 'user', content: cleaned })
     conv.lastActivity = Date.now()
-    const response = await this.generateResponse(cleaned, conv, '', cleaned, tenantId)
+    const hasCredit = await this.checkCredit(tenantId)
+    if (!hasCredit) return null
+    // Fetch campaigns for AI context
+    let campaignContext = ''
+    try {
+      const campaigns = await this.prisma.campaign.findMany({ where: { tenantId, status: 'active' } })
+      if (campaigns.length > 0) {
+        campaignContext = '\nAKTIF KAMPANYALAR:\n'
+        for (const camp of campaigns) {
+          campaignContext += '- ' + camp.title + (camp.description ? ': ' + camp.description : '') + (camp.discount ? ' (%' + camp.discount + ' indirim)' : '') + '\n'
+        }
+      }
+    } catch {}
+    const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
+    const response = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
     conv.messages.push({ role: 'assistant', content: response })
+    this.tenantsService.deductCredit(tenantId).catch(() => {})
     return response
   }
 
@@ -521,5 +540,13 @@ export class WebchatService {
 
   private hasAnyWord(text: string, words: string[]): boolean {
     return words.some(w => text.includes(w))
+  }
+
+  private async checkCredit(tenantId: string): Promise<boolean> {
+    try {
+      return await this.tenantsService.deductCredit(tenantId)
+    } catch {
+      return true
+    }
   }
 }

@@ -20,6 +20,11 @@ import { AuthModule } from './auth/auth.module'
 import { LeadModule } from './lead/lead.module'
 import { PrismaModule } from './prisma.module'
 import { TenantsModule } from './tenants/tenants.module'
+import { ReportScheduleModule } from './report-schedule/report-schedule.module'
+import { CommentsModule } from './comments/comments.module'
+import { ReminderTemplatesModule } from './reminder-templates/reminder-templates.module'
+import { BulkMessagesModule } from './bulk-messages/bulk-messages.module'
+import { CampaignsModule } from './campaigns/campaigns.module'
 import { UploadsModule } from './uploads/uploads.module'
 import { PaymentsModule } from './payments/payments.module'
 import { EInvoiceModule } from './einvoice/einvoice.module'
@@ -57,7 +62,7 @@ import { HealthCheckModule } from './health-check/health-check.module'
       inject: [ConfigService],
     }),
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, PushModule,
-    OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, PaymentsModule, UploadsModule,
+    OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, ReportScheduleModule,  CommentsModule,  ReminderTemplatesModule,  BulkMessagesModule,  CampaignsModule,  PaymentsModule, UploadsModule,
     EInvoiceModule,
     EncryptionModule, ZernioModule, AnalyticsModule, ErrorLogModule, HealthCheckModule,
   ],

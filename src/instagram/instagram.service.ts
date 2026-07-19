@@ -84,6 +84,23 @@ export class InstagramService {
     }
   }
 
+  async replyToComment(tenantId: string, commentId: string, text: string) {
+    const config = await this.getConfig(tenantId)
+    if (!config?.accessToken) return { success: false, error: 'Instagram yapilandirilmamis' }
+    try {
+      const res = await lastValueFrom(
+        this.http.post('https://graph.facebook.com/v21.0/' + commentId + '/replies', {}, {
+          params: { message: text, access_token: config.accessToken },
+        })
+      )
+      return { success: true, data: res.data }
+    } catch (e: any) {
+      const errBody = e.response?.data?.error?.message || e.message || 'Bilinmeyen hata'
+      console.error('Instagram reply error details:', JSON.stringify(e.response?.data?.error || e.message))
+      return { success: false, error: errBody }
+    }
+  }
+
   async sendMessage(tenantId: string, to: string, text: string) {
     try {
       const { accessToken } = await this.getCredentials(tenantId)

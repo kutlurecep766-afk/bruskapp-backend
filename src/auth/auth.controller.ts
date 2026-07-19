@@ -37,6 +37,21 @@ export class AuthController {
   }
 
   @Public()
+  @Post('token-login')
+  @HttpCode(HttpStatus.OK)
+  async tokenLogin(@Req() req: Request, @Body() dto: LoginDto) {
+    const ip = (req.ip || req.socket?.remoteAddress || '') as string
+    const user = await this.authService.validateLogin(dto.email, dto.password, ip)
+    if (!user) {
+      throw new UnauthorizedException('Email veya sifre hatali')
+    }
+    const result = await this.authService.login(user)
+    const dbUser = await this.prisma.user.findUnique({ where: { id: user.userId } })
+    await this.prisma.loginAttempt.create({ data: { email: dto.email, success: true, ip, userId: user.userId } })
+    return { accessToken: result.accessToken, refreshToken: result.refreshToken, user: { userId: user.userId, email: user.email, name: user.name || '', role: dbUser?.role || 'USER', tenantId: dbUser?.tenantId || null } }
+  }
+
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(@Req() req: Request, @Body() dto: LoginDto, @Res({ passthrough: true }) res: Response) {

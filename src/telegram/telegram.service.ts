@@ -273,7 +273,7 @@ export class TelegramService implements OnModuleInit {
     }
 
     if (chatId && msg.text) {
-      let reply = ''
+      let reply: string | null = ''
       if (this.webchatService) {
         try {
           reply = await this.webchatService.generatePlatformResponse(tenantId, "telegram", from, msg.text)
@@ -282,6 +282,7 @@ export class TelegramService implements OnModuleInit {
           await this.logError('ai_error', 'telegram', tenantId, 'AI yanit hatasi', e?.message || 'Bilinmeyen hata', tenantId)
         }
       }
+      if (reply === null) return true
       if (!reply) {
         reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'
       }
@@ -371,7 +372,7 @@ export class TelegramService implements OnModuleInit {
   }
 
   async autoReply(chatId: string, incomingText: string, from?: string): Promise<void> {
-    let reply = ''
+    let reply: string | null = ''
     if (this.webchatService && this.prisma && from) {
       try {
         const tenant = await this.prisma.tenant.findFirst({ where: { slug: 'default' }, select: { id: true } })
@@ -382,6 +383,7 @@ export class TelegramService implements OnModuleInit {
         this.logger.error('WebchatService hatasi (autoReply): ' + (e?.message || ''))
       }
     }
+    if (reply === null) return
     if (!reply) {
       reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'
     }

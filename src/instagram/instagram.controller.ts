@@ -117,6 +117,42 @@ export class InstagramController {
       if (!config) continue
       const tenantId = config.tenantId
 
+      // Handle post comments
+      const changes = entry.changes || []
+      for (const change of changes) {
+        const field = change.field
+        const value = change.value || {}
+        if (field === 'comments') {
+          const commentId = value.id
+          const text = value.text || ''
+          const username = value.from?.username || value.from?.name || 'Bilinmiyor'
+          const verb = value.verb || ''
+
+          // Handle deleted comments
+          if (verb === 'deleted' || verb === 'removed') {
+            try {
+              await this.prisma.comment.updateMany({
+                where: { commentId, tenantId },
+                data: { status: 'deleted' },
+              })
+            } catch (e) { console.error('Comment delete error:', e) }
+            continue
+          }
+
+          if (text && commentId) {
+            try {
+              const existing = await this.prisma.comment.findFirst({ where: { commentId } }).catch(() => null)
+              if (!existing) {
+                await this.prisma.comment.create({
+                  data: { tenantId, platform: 'instagram', commentId, author: username, content: text, status: 'pending' },
+                })
+              }
+            } catch (e) { console.error('Comment save error:', e) }
+          }
+        }
+      }
+
+      // Handle DMs
       const messaging = entry.messaging || []
       for (const event of messaging) {
         const senderId = event.sender?.id
