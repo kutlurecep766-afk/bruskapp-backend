@@ -75,7 +75,7 @@ export class AnalyticsService {
 
     const token = this.telegram.getTenantBotToken(tenantId)
     const chatId = this.telegram.getTenantChatId(tenantId)
-    if (!token || !chatId) return { success: false, message: 'Telegram bildirim ayarlari eksik. Bot'a mesaj gönderip chat ID\'si alınmalı.' }
+    if (!token || !chatId) return { success: false, message: 'Telegram bildirim ayarlari eksik. Bota mesaj gonderip chat ID alinmali' }
     const sent = await this.telegram.sendDirectMessage(token, chatId, 'Günlük Rapor', text)
     return { success: sent, message: sent ? 'Rapor Telegram\'a gönderildi' : 'Gönderilemedi' }
   }
