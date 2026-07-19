@@ -81,23 +81,26 @@ export class TelegramController {
     return { status: 'ok' }
   }
 
-  @Public()
   @Post('tenant-connect')
-  async tenantConnect(@Body() body: { tenantId: string; token: string }) {
-    return this.telegramService.connectTenantBot(body.tenantId, body.token)
+  async tenantConnect(@Req() req: any, @Body() body: { token: string }) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) return { success: false, message: 'Yetkilendirme gerekli' }
+    if (!body.token) return { success: false, message: 'Token gerekli' }
+    return this.telegramService.connectTenantBot(tenantId, body.token)
   }
 
-  @Public()
   @Post('tenant-disconnect')
-  async tenantDisconnect(@Body() body: { tenantId: string }) {
-    return this.telegramService.disconnectTenantBot(body.tenantId)
+  async tenantDisconnect(@Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) return { success: false, message: 'Yetkilendirme gerekli' }
+    return this.telegramService.disconnectTenantBot(tenantId)
   }
 
-  @Public()
   @Post('tenant-status')
-  async tenantStatus(@Body() body: { tenantId: string }) {
-    if (!body.tenantId) return { connected: false, botInfo: null }
-    return this.telegramService.getTenantBotStatus(body.tenantId)
+  async tenantStatus(@Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) return { connected: false, botInfo: null }
+    return this.telegramService.getTenantBotStatus(tenantId)
   }
 
   @Public()

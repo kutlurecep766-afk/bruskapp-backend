@@ -242,6 +242,12 @@ export class TelegramService implements OnModuleInit {
     try { return JSON.parse(raw) } catch { return null }
   }
 
+  getTenantChatId(tenantId: string): string {
+    return this.config.get(this.telegramChatIdKey(tenantId)) || ''
+  }
+
+  private telegramChatIdKey(tenantId: string) { return 'telegram_chat_id_' + tenantId }
+
   async handleTenantWebhook(tenantId: string, body: any): Promise<boolean> {
     const token = this.getTenantBotToken(tenantId)
     if (!token) return false
@@ -251,6 +257,7 @@ export class TelegramService implements OnModuleInit {
     const from = msg.from?.username || msg.from?.id?.toString() || 'unknown'
     const content = msg.text || '(media)'
     const fromName = msg.from?.first_name || ''
+    if (chatId) this.config.set(this.telegramChatIdKey(tenantId), chatId)
     this.logger.log('Tenant [' + tenantId + '] mesaj: ' + from + ' -> ' + content.substring(0, 50))
 
     if (this.messagesService) {

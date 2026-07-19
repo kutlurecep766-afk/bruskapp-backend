@@ -73,11 +73,11 @@ export class AnalyticsService {
     text += `<b>👥 Musteriler</b>\n`
     text += `Toplam: ${data.customers.total} | Bu ay yeni: ${data.customers.newThisMonth}`
 
-    const botToken = this.config.get('TELEGRAM_BOT_TOKEN_' + tenantId)
-    const chatId = this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID_' + tenantId)
-    if (!botToken || !chatId) return { success: false, message: 'Telegram bildirim ayarlari eksik' }
-    const sent = await this.telegram.sendDirectMessage(botToken, chatId, '📊 Gunluk Rapor', text)
-    return { success: sent, message: sent ? 'Rapor Telegram\'a gonderildi' : 'Gonderilemedi' }
+    const token = this.telegram.getTenantBotToken(tenantId)
+    const chatId = this.telegram.getTenantChatId(tenantId)
+    if (!token || !chatId) return { success: false, message: 'Telegram bildirim ayarlari eksik. Bot'a mesaj gönderip chat ID\'si alınmalı.' }
+    const sent = await this.telegram.sendDirectMessage(token, chatId, 'Günlük Rapor', text)
+    return { success: sent, message: sent ? 'Rapor Telegram\'a gönderildi' : 'Gönderilemedi' }
   }
 
   private async orderStats(tenantId: string, todayStart: Date, weekStart: Date, monthStart: Date) {
