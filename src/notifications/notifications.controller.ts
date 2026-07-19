@@ -7,7 +7,6 @@ import { Response } from 'express'
 export class NotificationsController {
   constructor(private readonly notificationsService: NotificationsService) {}
 
-  @Public()
   @Get('preferences')
   async getPreferences(@Req() req: any) {
     const tenantId = req.user?.tenantId || ''
@@ -15,7 +14,6 @@ export class NotificationsController {
     return this.notificationsService.getPreferences(tenantId)
   }
 
-  @Public()
   @Post('preferences')
   async setPreferences(@Req() req: any, @Body() body: { newOrder?: boolean; lowStock?: boolean; newMessage?: boolean }) {
     const tenantId = req.user?.tenantId || ''
