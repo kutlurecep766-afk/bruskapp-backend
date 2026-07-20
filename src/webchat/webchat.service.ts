@@ -218,7 +218,9 @@ export class WebchatService {
       const response = await this.generateResponse(short, conv, sessionId, short)
       conv.messages.push({ role: 'assistant', content: response })
       await this.syncLead(sessionId, cleaned, response, conv).catch(() => {})
-      await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
+      const intentMsg = await this.detectIntent(sessionId, cleaned, response, conv).catch(() => null)
+      if (intentMsg) { conv.messages[conv.messages.length - 1] = { role: 'assistant', content: intentMsg }; return intentMsg }
+      return response
     }
     const conv = this.getOrCreateConversation(sessionId)
     if (conv.messages.length >= MAX_CONV_MSGS * 2) {
@@ -229,7 +231,9 @@ export class WebchatService {
     const response = await this.generateResponse(cleaned, conv, sessionId, cleaned)
     conv.messages.push({ role: 'assistant', content: response })
     await this.syncLead(sessionId, cleaned, response, conv).catch(() => {})
-    await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
+    const intentMsg = await this.detectIntent(sessionId, cleaned, response, conv).catch(() => null)
+    if (intentMsg) { conv.messages[conv.messages.length - 1] = { role: 'assistant', content: intentMsg }; return intentMsg }
+    return response
   }
 
   private async loadConfigForSlug(slug: string): Promise<ChatBotConfig> {
@@ -436,7 +440,7 @@ export class WebchatService {
       conv.lastActivity = Date.now()
       const hasCredit = await this.checkCredit(tenantId)
       if (!hasCredit) return null
-      const response = await this.generateResponse(short, conv, '', short, tenantId)
+      let response = await this.generateResponse(short, conv, '', short, tenantId)
       conv.messages.push({ role: 'assistant', content: response })
       this.tenantsService.deductCredit(tenantId).catch(() => {})
       return response
@@ -463,7 +467,7 @@ export class WebchatService {
       }
     } catch {}
     const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
-    const response = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
+    let response = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
     conv.messages.push({ role: 'assistant', content: response })
     this.tenantsService.deductCredit(tenantId).catch(() => {})
     // Multi-channel lead creation
@@ -480,38 +484,50 @@ export class WebchatService {
         })
       }
     } catch {}
-    // Intent detection for platform messages
+    // Intent detection for platform messages - override response if action taken
     try {
       const featureTenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
       const features = (featureTenant?.features as any) || {}
       const pConv = this.getOrCreateConversation(sessionKey)
       const allMsgs = pConv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
       const lower = cleaned.toLowerCase()
-      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum'))) {
-        const productMatch = cleaned.match(/(\d+)\s*(?:adet|tane)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
-        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products: productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }], totalAmount: 0, note: 'AI ile oluşturuldu' }).catch(() => {})
-      }
-      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
-        if (this.appointmentsService) this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
-      }
-      if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt'))) {
-        if (this.reservationsService) this.reservationsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '20:00', guests: 2 }).catch(() => {})
-      }
-      // Platform iptal tespiti
+
+      // İptal öncelikli
       if (allMsgs.includes('iptal') || allMsgs.includes('cancel') || allMsgs.includes('vazgeç') || allMsgs.includes('vazgectim')) {
-        const reason = cleaned.replace(/(?:iptal|cancel|vazgeç|vazgectim|etmek|ediyorum|istiyorum|oldu|ettim)/gi, '').trim().slice(0, 200) || 'Müşteri tarafından iptal edildi'
-        const note = 'İptal sebebi: ' + reason
+        const reason = cleaned.replace(/(?:iptal|cancel|vazgeç|vazgectim|etmek|ediyorum|istiyorum|oldu|ettim)/gi, '').trim().slice(0, 200)
+        const note = 'İptal sebebi: ' + (reason || 'Müşteri tarafından iptal edildi')
         if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis'))) {
           const latest = await this.prisma.order.findFirst({ where: { tenantId, customerName: userId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
-          if (latest) await this.prisma.order.update({ where: { id: latest.id }, data: { status: 'cancelled', note } }).catch(() => {})
+          if (latest) { await this.prisma.order.update({ where: { id: latest.id }, data: { status: 'cancelled', note } }).catch(() => {}); response = 'Siparişiniz iptal edildi.' }
         }
         if (features.appointments !== false && (allMsgs.includes('randevu'))) {
           const latest = await this.prisma.appointment.findFirst({ where: { tenantId, customerName: userId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
-          if (latest) await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+          if (latest) { await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {}); response = 'Randevunuz iptal edildi.' }
         }
         if (features.reservations !== false && (allMsgs.includes('rezervasyon') || allMsgs.includes('masa'))) {
           const latest = await this.prisma.reservation.findFirst({ where: { tenantId, customerName: userId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
-          if (latest) await this.prisma.reservation.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+          if (latest) { await this.prisma.reservation.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {}); response = 'Rezervasyonunuz iptal edildi.' }
+        }
+      }
+
+      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum'))) {
+        const productMatch = cleaned.match(/(\d+)\s*(?:adet|tane)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
+        if (this.ordersService) {
+          const products = productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }]
+          await this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products, totalAmount: 0, note: 'AI ile oluşturuldu' }).catch(() => {})
+          response = (products[0]?.name || 'Siparişiniz') + ' siparişiniz alındı!'
+        }
+      }
+      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
+        if (this.appointmentsService) {
+          await this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
+          response = 'Randevunuz oluşturuldu.'
+        }
+      }
+      if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt'))) {
+        if (this.reservationsService) {
+          await this.reservationsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '20:00', guests: 2 }).catch(() => {})
+          response = 'Rezervasyonunuz oluşturuldu.'
         }
       }
     } catch {}
@@ -573,11 +589,12 @@ export class WebchatService {
     return config.welcomeMessage
   }
 
-  private async detectIntent(sessionId: string, message: string, response: string, conv: Conversation) {
+  private async detectIntent(sessionId: string, message: string, response: string, conv: Conversation): Promise<string | null> {
+    let result: string | null = null
     try {
       const slug = sessionId?.split(':')[0] || 'default'
-      const tenant = await this.prisma.tenant.findFirst({ where: { slug }, select: { id: true, features: true } })
-      if (!tenant?.id) return
+      const tenant = await this.prisma.tenant.findFirst({ where: { slug }, select: { id: true, features: true, name: true } })
+      if (!tenant?.id) return null
       const features = (tenant.features as any) || {}
       const lower = message.toLowerCase()
       const allMsgs = conv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
@@ -587,8 +604,26 @@ export class WebchatService {
       const customerName = nameMatch ? nameMatch[1].trim() : 'Web Chat Ziyaretçisi'
       const customerContact = phoneMatch ? phoneMatch[0] : ''
 
-      // Sipariş tespiti
-      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir'))) {
+      // İptal tespiti - önce kontrol et (iptal ise yenisini oluşturma)
+      if (allMsgs.includes('iptal') || allMsgs.includes('cancel') || allMsgs.includes('vazgeç') || allMsgs.includes('vazgectim')) {
+        const reason = message.replace(/(?:iptal|cancel|vazgeç|vazgectim|etmek|ediyorum|istiyorum|oldu|ettim|istiyorum)/gi, '').trim().slice(0, 200) || 'Müşteri tarafından iptal edildi'
+        const note = 'İptal sebebi: ' + reason
+        if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('siparişimi') || allMsgs.includes('siparisimi'))) {
+          const latest = await this.prisma.order.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) { await this.prisma.order.update({ where: { id: latest.id }, data: { status: 'cancelled', note } }).catch(() => {}); result = 'Siparişiniz iptal edildi. Geçerli bir neden belirttiyseniz not olarak eklendi.' }
+        }
+        if (!result && features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('randevumu') || allMsgs.includes('randevuyu'))) {
+          const latest = await this.prisma.appointment.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) { await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {}); result = 'Randevunuz iptal edildi.' }
+        }
+        if (!result && features.reservations !== false && (allMsgs.includes('rezervasyon') || allMsgs.includes('rezervasyonu') || allMsgs.includes('masayı') || allMsgs.includes('masa'))) {
+          const latest = await this.prisma.reservation.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) { await this.prisma.reservation.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {}); result = 'Rezervasyonunuz iptal edildi.' }
+        }
+      }
+
+      // Sipariş tespiti (iptal degilse)
+      if (!result && features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir'))) {
         if (this.ordersService) {
           const productMatch = message.match(/(\d+)\s*(?:adet|tane|porsiyon|kg)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
           const products = productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }]
@@ -601,11 +636,13 @@ export class WebchatService {
             totalAmount: 0,
             note: 'AI ile oluşturuldu',
           }).catch(() => {})
+          const pName = products[0]?.name || 'siparişiniz'
+          result = `${pName} siparişiniz alındı! En kısa sürede hazırlanıp teslim edilecektir.`
         }
       }
 
       // Randevu tespiti
-      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene') || allMsgs.includes('tedavi') || allMsgs.includes('kuaför') || allMsgs.includes('berber') || allMsgs.includes('doktor') || allMsgs.includes('klinik'))) {
+      if (!result && features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene') || allMsgs.includes('tedavi') || allMsgs.includes('kuaför') || allMsgs.includes('berber') || allMsgs.includes('doktor') || allMsgs.includes('klinik'))) {
         if (this.appointmentsService) {
           const dateMatch = message.match(/(\d{1,2})\s*(?:ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık|\.\d{1,2}\.\d{4}|\/\d{1,2}\/\d{4})/i)
           const timeMatch = message.match(/(\d{1,2})[.:](\d{2})/)
@@ -621,11 +658,13 @@ export class WebchatService {
             time: apptTime,
             service: serviceMatch ? serviceMatch[1].trim() : '',
           }).catch(() => {})
+          const dateStr = apptDate.toLocaleDateString('tr-TR')
+          result = `Randevunuz ${dateStr} ${apptTime}'de oluşturuldu. İptal veya değişiklik için bize ulaşabilirsiniz.`
         }
       }
 
       // Rezervasyon tespiti
-      if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt') || allMsgs.includes('yer ayır') || allMsgs.includes('arkadaş') || allMsgs.includes('grup') || allMsgs.includes('yemek'))) {
+      if (!result && features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt') || allMsgs.includes('yer ayır') || allMsgs.includes('arkadaş') || allMsgs.includes('grup') || allMsgs.includes('yemek'))) {
         if (this.reservationsService) {
           const dateMatch = message.match(/(\d{1,2})\s*(?:ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık|\.\d{1,2}\.\d{4}|\/\d{1,2}\/\d{4})/i)
           const timeMatch = message.match(/(\d{1,2})[.:](\d{2})/)
@@ -642,27 +681,12 @@ export class WebchatService {
             time: resTime,
             guests,
           }).catch(() => {})
-        }
-      }
-
-      // İptal tespiti - sipariş, randevu veya rezervasyon iptali
-      if (allMsgs.includes('iptal') || allMsgs.includes('cancel') || allMsgs.includes('vazgeç') || allMsgs.includes('vazgectim')) {
-        const reason = message.replace(/(?:iptal|cancel|vazgeç|vazgectim|etmek|ediyorum|istiyorum|oldu|ettim|istiyorum)/gi, '').trim().slice(0, 200) || 'Müşteri tarafından iptal edildi'
-        const note = 'İptal sebebi: ' + reason
-        if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('siparişimi') || allMsgs.includes('siparisimi') || allMsgs.includes('siparişi') || allMsgs.includes('siparisi'))) {
-          const latest = await this.prisma.order.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
-          if (latest) await this.prisma.order.update({ where: { id: latest.id }, data: { status: 'cancelled', note } }).catch(() => {})
-        }
-        if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('randevumu') || allMsgs.includes('randevuyu'))) {
-          const latest = await this.prisma.appointment.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
-          if (latest) await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
-        }
-        if (features.reservations !== false && (allMsgs.includes('rezervasyon') || allMsgs.includes('rezervasyonu') || allMsgs.includes('masayı') || allMsgs.includes('masa'))) {
-          const latest = await this.prisma.reservation.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
-          if (latest) await this.prisma.reservation.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+          const dateStr = resDate.toLocaleDateString('tr-TR')
+          result = `${guests} kişilik rezervasyonunuz ${dateStr} ${resTime}'de oluşturuldu.`
         }
       }
     } catch {}
+    return result
   }
 
   private async syncLead(sessionId: string, message: string, response: string, conv: Conversation) {
