@@ -497,6 +497,23 @@ export class WebchatService {
       if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt'))) {
         if (this.reservationsService) this.reservationsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '20:00', guests: 2 }).catch(() => {})
       }
+      // Platform iptal tespiti
+      if (allMsgs.includes('iptal') || allMsgs.includes('cancel') || allMsgs.includes('vazgeç') || allMsgs.includes('vazgectim')) {
+        const reason = cleaned.replace(/(?:iptal|cancel|vazgeç|vazgectim|etmek|ediyorum|istiyorum|oldu|ettim)/gi, '').trim().slice(0, 200) || 'Müşteri tarafından iptal edildi'
+        const note = 'İptal sebebi: ' + reason
+        if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis'))) {
+          const latest = await this.prisma.order.findFirst({ where: { tenantId, customerName: userId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.order.update({ where: { id: latest.id }, data: { status: 'cancelled', note } }).catch(() => {})
+        }
+        if (features.appointments !== false && (allMsgs.includes('randevu'))) {
+          const latest = await this.prisma.appointment.findFirst({ where: { tenantId, customerName: userId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+        }
+        if (features.reservations !== false && (allMsgs.includes('rezervasyon') || allMsgs.includes('masa'))) {
+          const latest = await this.prisma.reservation.findFirst({ where: { tenantId, customerName: userId, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.reservation.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+        }
+      }
     } catch {}
     return response
   }
@@ -625,6 +642,24 @@ export class WebchatService {
             time: resTime,
             guests,
           }).catch(() => {})
+        }
+      }
+
+      // İptal tespiti - sipariş, randevu veya rezervasyon iptali
+      if (allMsgs.includes('iptal') || allMsgs.includes('cancel') || allMsgs.includes('vazgeç') || allMsgs.includes('vazgectim')) {
+        const reason = message.replace(/(?:iptal|cancel|vazgeç|vazgectim|etmek|ediyorum|istiyorum|oldu|ettim|istiyorum)/gi, '').trim().slice(0, 200) || 'Müşteri tarafından iptal edildi'
+        const note = 'İptal sebebi: ' + reason
+        if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('siparişimi') || allMsgs.includes('siparisimi') || allMsgs.includes('siparişi') || allMsgs.includes('siparisi'))) {
+          const latest = await this.prisma.order.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.order.update({ where: { id: latest.id }, data: { status: 'cancelled', note } }).catch(() => {})
+        }
+        if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('randevumu') || allMsgs.includes('randevuyu'))) {
+          const latest = await this.prisma.appointment.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+        }
+        if (features.reservations !== false && (allMsgs.includes('rezervasyon') || allMsgs.includes('rezervasyonu') || allMsgs.includes('masayı') || allMsgs.includes('masa'))) {
+          const latest = await this.prisma.reservation.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.reservation.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
         }
       }
     } catch {}
