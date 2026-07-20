@@ -35,4 +35,10 @@ export class ConfigService {
     this.cache[key] = value
     this.save()
   }
+
+  keys(prefix?: string): string[] {
+    const allKeys = Object.keys(this.cache)
+    if (!prefix) return allKeys
+    return allKeys.filter(k => k.startsWith(prefix))
+  }
 }

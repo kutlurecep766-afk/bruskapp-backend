@@ -40,8 +40,42 @@ export class TelegramService implements OnModuleInit {
       this.startPolling()
     }
 
+    // Config.json'daki tüm tenant token'larını DB'ye sync et (çift yönlü kalıcılık)
+    await this.syncAllTenantConfigs()
+
     // Multi-tenant bot webhooklarini yeniden kur
     await this.reconnectAllTenantBots()
+  }
+
+  private async syncAllTenantConfigs() {
+    try {
+      if (!this.prisma) return
+      const prefix = 'telegram_token_'
+      const keys = this.config.keys(prefix)
+      let synced = 0
+      for (const key of keys) {
+        const token = this.config.get(key)
+        if (!token) continue
+        const tenantId = key.slice(prefix.length)
+        if (!tenantId) continue
+        // DB'de kayit var mi kontrol et, yoksa config'den geri yukle
+        const existing = await this.prisma.telegramConfig.findUnique({ where: { tenantId } }).catch(() => null)
+        if (!existing) {
+          const rawInfo = this.config.get(this.telegramInfoKey(tenantId))
+          let botInfo: any = null
+          try { if (rawInfo) botInfo = JSON.parse(rawInfo) } catch {}
+          await this.prisma.telegramConfig.create({
+            data: { tenantId, botToken: token, botInfo, active: true },
+          }).catch(e => this.logger.error('TelegramConfig sync hatasi (' + tenantId + '): ' + e.message))
+          synced++
+        }
+      }
+      if (synced > 0) {
+        this.logger.log('Config.json -> DB sync tamam: ' + synced + ' kayit kurtarildi')
+      }
+    } catch (e: any) {
+      this.logger.error('syncAllTenantConfigs hatasi: ' + (e?.message || ''))
+    }
   }
 
   private async reconnectAllTenantBots() {
