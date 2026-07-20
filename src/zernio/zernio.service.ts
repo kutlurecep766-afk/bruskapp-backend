@@ -31,7 +31,59 @@ export class ZernioService implements OnModuleInit {
   async onModuleInit() {
     if (this.apiKey) {
       await this.ensureWebhook()
+      await this.syncAllZernioConnections()
       await this.reconnectAllProfiles()
+    }
+  }
+
+  private zernioPlatformsKey(tenantId: string) { return 'zernio_platforms_' + tenantId }
+
+  private async savePlatformsToConfig(tenantId: string, platforms: any[]) {
+    this.config.set(this.zernioPlatformsKey(tenantId), JSON.stringify(platforms))
+  }
+
+  private async syncAllZernioConnections() {
+    try {
+      if (!this.prisma) return
+      const prefix = 'zernio_platforms_'
+      const keys = this.config.keys(prefix)
+      let synced = 0
+      for (const key of keys) {
+        const raw = this.config.get(key)
+        if (!raw) continue
+        const tenantId = key.slice(prefix.length)
+        if (!tenantId) continue
+        let platforms: any[]
+        try { platforms = JSON.parse(raw) } catch { continue }
+        if (!Array.isArray(platforms) || platforms.length === 0) continue
+        const existing = await this.prisma.zernioConnection.findUnique({ where: { tenantId } }).catch(() => null)
+        if (!existing) {
+          await this.prisma.zernioConnection.create({
+            data: { tenantId, platforms },
+          }).catch(e => this.logger.error('ZernioConnection sync hatasi (' + tenantId + '): ' + e.message))
+          synced++
+        } else {
+          const existingPlatforms = (existing.platforms as any[]) || []
+          const merged = [...existingPlatforms]
+          for (const p of platforms) {
+            if (!merged.find((m: any) => m.platform === p.platform)) {
+              merged.push(p)
+            }
+          }
+          if (merged.length !== existingPlatforms.length) {
+            await this.prisma.zernioConnection.update({
+              where: { tenantId },
+              data: { platforms: merged },
+            }).catch(e => this.logger.error('ZernioConnection merge hatasi (' + tenantId + '): ' + e.message))
+            synced++
+          }
+        }
+      }
+      if (synced > 0) {
+        this.logger.log('Config.json -> ZernioConnection sync tamam: ' + synced + ' kayit kurtarildi')
+      }
+    } catch (e: any) {
+      this.logger.error('syncAllZernioConnections hatasi: ' + (e?.message || ''))
     }
   }
 
@@ -182,6 +234,7 @@ export class ZernioService implements OnModuleInit {
           where: { tenantId },
           data: { platforms },
         })
+        await this.savePlatformsToConfig(tenantId, platforms)
         return true
       }
       return false
@@ -231,6 +284,7 @@ export class ZernioService implements OnModuleInit {
             where: { tenantId: conn.tenantId },
             data: { platforms },
           })
+          await this.savePlatformsToConfig(conn.tenantId, platforms)
           return { success: true, platform, redirectUrl: selectRes.data?.redirect_url }
         }
       } catch (e: any) {
@@ -256,6 +310,7 @@ export class ZernioService implements OnModuleInit {
             where: { tenantId: conn.tenantId },
             data: { platforms },
           })
+          await this.savePlatformsToConfig(conn.tenantId, platforms)
           return { success: true, platform, redirectUrl: res.data?.redirect_url }
         }
       } catch (e: any) {
@@ -291,6 +346,7 @@ export class ZernioService implements OnModuleInit {
       where: { tenantId },
       data: { platforms },
     })
+    await this.savePlatformsToConfig(tenantId, platforms)
     return true
   }
 
@@ -378,6 +434,7 @@ export class ZernioService implements OnModuleInit {
             where: { tenantId: conn.tenantId },
             data: { platforms },
           })
+          await this.savePlatformsToConfig(conn.tenantId, platforms)
         }
       }
     }
@@ -393,6 +450,7 @@ export class ZernioService implements OnModuleInit {
             where: { tenantId: conn.tenantId },
             data: { platforms },
           })
+          await this.savePlatformsToConfig(conn.tenantId, platforms)
         }
       }
     }
