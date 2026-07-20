@@ -267,3 +267,10 @@ export class TenantsService {
     return false
   }
 }
+
+  async setAiToggle(tenantId: string, enabled: boolean) {
+    return this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { aiEnabled: enabled },
+    })
+  }

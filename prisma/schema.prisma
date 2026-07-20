@@ -21,6 +21,7 @@ model Tenant {
   apiKeys      Json     @default("{}")
   features      Json     @default("{}")
   messageCredit Int      @default(0)
+  aiEnabled Boolean @default(true)
   einvoiceConfig Json   @default("{}")
   webchatConfig Json     @default("{}")
   adminChatId   String?

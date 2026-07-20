@@ -1,0 +1,1 @@
+ALTER TABLE "Tenant" ADD COLUMN "aiEnabled" BOOLEAN NOT NULL DEFAULT true;

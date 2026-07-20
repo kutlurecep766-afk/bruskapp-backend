@@ -544,6 +544,11 @@ export class WebchatService {
 
   private async checkCredit(tenantId: string): Promise<boolean> {
     try {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { aiEnabled: true },
+      })
+      if (tenant && !tenant.aiEnabled) return false
       return await this.tenantsService.deductCredit(tenantId)
     } catch {
       return true

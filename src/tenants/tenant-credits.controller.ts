@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Req, NotFoundException } from '@nestjs/common'
+import { Controller, Get, Post, Param, Req, NotFoundException, Body } from '@nestjs/common'
 import { TenantsService } from './tenants.service'
 
 @Controller('tenant')
@@ -39,5 +39,11 @@ export class TenantCreditsController {
   async getStats(@Req() req: any) {
     if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadı')
     return this.tenantsService.getMessageStats(req.user.tenantId)
+  }
+
+  @Post('ai-toggle')
+  async setAiToggle(@Req() req: any, @Body() body: { enabled: boolean }) {
+    if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadi')
+    return this.tenantsService.setAiToggle(req.user.tenantId, body.enabled)
   }
 }
