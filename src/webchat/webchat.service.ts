@@ -256,6 +256,7 @@ export class WebchatService {
     prompt += `- Bilgi havuzunda konuyla ilgili HICBIR SEY yoksa "Bu konuda su an bilgim yok" de.\n`
     prompt += `- KESINLIKLE kendi bilgini kullanma, HICBIR SEY UYDURMA. Sadece bilgi havuzundakini soyle.\n`
     prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
+    prompt += `- YETENEKLERIN: Siparis alabilir, randevu olusturabilir, rezervasyon yapabilir ve iptal edebilirsin. Kullanici bunlardan birini istedigi anda islemi onayla ve dogal bir dille cevap ver. Ornek: "Siparisinizi aldim" veya "Randevunuz olusturuldu" gibi.\n`
     if (c.systemPrompt) prompt += `- ${c.systemPrompt}\n`
     if (c.knowledgeBase) {
       prompt += `\nBILGI HAVUZU:\n${c.knowledgeBase}\n`
@@ -556,22 +557,46 @@ export class WebchatService {
     return config.welcomeMessage
   }
 
-  private async detectIntent(sessionId: string, message: string, response: string, conv: Conversation) {
+  private async detectIntent(sessionId: string, message: string, aiResponse: string, conv: Conversation) {
     try {
       const slug = sessionId?.split(':')[0] || 'default'
       const tenant = await this.prisma.tenant.findFirst({ where: { slug }, select: { id: true, features: true } })
       if (!tenant?.id) return
       const features = (tenant.features as any) || {}
-      const lower = message.toLowerCase()
+
+      // AI yanıtında "yönetici" geçiyorsa hiçbir işlem yapma
+      const lowerResp = aiResponse.toLowerCase()
+      if (lowerResp.includes('yönetici') || lowerResp.includes('yonetici') || lowerResp.includes('ilet') || lowerResp.includes('bilgim yok')) return
+
       const allMsgs = conv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
+      const lower = message.toLowerCase()
 
       const phoneMatch = message.match(/(0[0-9]{10}|05[0-9]{9}|\+90[0-9]{10}|5[0-9]{9})/g)
       const nameMatch = message.match(/(?:benim adım|adim|bana da|ben|bana|ismim) (.+?)(?:[,.]|\s|$)/i)
       const customerName = nameMatch ? nameMatch[1].trim() : 'Web Chat Ziyaretçisi'
       const customerContact = phoneMatch ? phoneMatch[0] : ''
 
-      // Sipariş tespiti
-      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir'))) {
+      // İptal tespiti (AI onayladıysa)
+      if ((allMsgs.includes('iptal') || allMsgs.includes('cancel') || allMsgs.includes('vazgeç') || allMsgs.includes('vazgectim')) && (lowerResp.includes('iptal') || lowerResp.includes('edildi'))) {
+        const reason = message.replace(/(?:iptal|cancel|vazgeç|vazgectim|etmek|ediyorum|istiyorum|oldu|ettim)/gi, '').trim().slice(0, 200) || 'Müşteri tarafından iptal edildi'
+        const note = 'İptal sebebi: ' + reason
+        if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('siparişimi') || allMsgs.includes('siparisimi'))) {
+          const latest = await this.prisma.order.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.order.update({ where: { id: latest.id }, data: { status: 'cancelled', note } }).catch(() => {})
+        }
+        if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('randevumu') || allMsgs.includes('randevuyu'))) {
+          const latest = await this.prisma.appointment.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+        }
+        if (features.reservations !== false && (allMsgs.includes('rezervasyon') || allMsgs.includes('rezervasyonu') || allMsgs.includes('masayı') || allMsgs.includes('masa'))) {
+          const latest = await this.prisma.reservation.findFirst({ where: { tenantId: tenant.id, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.reservation.update({ where: { id: latest.id }, data: { status: 'cancelled', notes: note } }).catch(() => {})
+        }
+        return
+      }
+
+      // Sipariş tespiti (AI onayladıysa)
+      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir')) && lowerResp.includes('alındı')) {
         if (this.ordersService) {
           const productMatch = message.match(/(\d+)\s*(?:adet|tane|porsiyon|kg)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
           const products = productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }]
@@ -587,8 +612,8 @@ export class WebchatService {
         }
       }
 
-      // Randevu tespiti
-      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene') || allMsgs.includes('tedavi') || allMsgs.includes('kuaför') || allMsgs.includes('berber') || allMsgs.includes('doktor') || allMsgs.includes('klinik'))) {
+      // Randevu tespiti (AI onayladıysa)
+      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene') || allMsgs.includes('tedavi') || allMsgs.includes('kuaför') || allMsgs.includes('berber') || allMsgs.includes('doktor') || allMsgs.includes('klinik')) && (lowerResp.includes('oluşturuldu') || lowerResp.includes('olusturuldu') || lowerResp.includes('alındı'))) {
         if (this.appointmentsService) {
           const dateMatch = message.match(/(\d{1,2})\s*(?:ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık|\.\d{1,2}\.\d{4}|\/\d{1,2}\/\d{4})/i)
           const timeMatch = message.match(/(\d{1,2})[.:](\d{2})/)
@@ -607,8 +632,8 @@ export class WebchatService {
         }
       }
 
-      // Rezervasyon tespiti
-      if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt') || allMsgs.includes('yer ayır') || allMsgs.includes('arkadaş') || allMsgs.includes('grup') || allMsgs.includes('yemek'))) {
+      // Rezervasyon tespiti (AI onayladıysa)
+      if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt') || allMsgs.includes('yer ayır') || allMsgs.includes('arkadaş') || allMsgs.includes('grup') || allMsgs.includes('yemek')) && (lowerResp.includes('oluşturuldu') || lowerResp.includes('olusturuldu') || lowerResp.includes('alındı'))) {
         if (this.reservationsService) {
           const dateMatch = message.match(/(\d{1,2})\s*(?:ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık|\.\d{1,2}\.\d{4}|\/\d{1,2}\/\d{4})/i)
           const timeMatch = message.match(/(\d{1,2})[.:](\d{2})/)
