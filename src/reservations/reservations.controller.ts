@@ -12,11 +12,13 @@ export class ReservationsController {
     return this.service.create(body)
   }
 
+  @Public()
   @Get()
   async findAll(@Query('tenantId') tenantId: string) {
     return this.service.findAll(tenantId)
   }
 
+  @Public()
   @Post(':id/status')
   async updateStatus(@Param('id', ParseIntPipe) id: number, @Body() body: { status: string }) {
     return this.service.updateStatus(id, body.status)
