@@ -1,6 +1,7 @@
 import { Injectable, Inject, forwardRef } from '@nestjs/common'
 import { TenantsService } from '../tenants/tenants.service'
 import { PrismaService } from '../prisma.service'
+import { ConfigService } from '../config.service'
 
 export interface Product {
   name: string
@@ -71,7 +72,7 @@ export class WebchatService {
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
-  constructor(private prisma: PrismaService, private tenantsService: TenantsService) {
+  constructor(private prisma: PrismaService, private tenantsService: TenantsService, private config: ConfigService) {
     this.aiApiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
     this.aiModel = process.env.AI_MODEL || 'deepseek-chat'
   }
@@ -82,18 +83,28 @@ export class WebchatService {
       businessName: tenantName || DEFAULT_CONFIG.businessName,
     }
   }
-
   async getConfig(tenantId: string): Promise<ChatBotConfig> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { webchatConfig: true, name: true },
     })
+
     if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
       return { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
     }
+
+    // DB'de yoksa config.json yediginden dene
+    const backupKey = 'webchat_config_' + tenantId
+    const backup = this.config.get(backupKey)
+    if (backup) {
+      try {
+        const parsed = JSON.parse(backup)
+        return { ...this.defaultConfig(tenant?.name), ...parsed }
+      } catch {}
+    }
+
     return this.defaultConfig(tenant?.name)
   }
-
   async getPublicConfig(slug: string): Promise<{ businessName: string; welcomeMessage: string; products: any[] }> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { slug },
@@ -125,6 +136,7 @@ export class WebchatService {
       where: { id: tenantId },
       data: { webchatConfig: merged as any },
     })
+    this.config.set('webchat_config_' + tenantId, JSON.stringify(merged))
     return merged
   }
 
