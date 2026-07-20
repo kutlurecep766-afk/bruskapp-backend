@@ -309,15 +309,25 @@ export class TelegramService implements OnModuleInit {
     return true
   }
 
-  async getTenantBotStatus(tenantId: string): Promise<{ connected: boolean; botInfo: any }> {
+  getMainBotToken(): string {
+    return this.botToken
+  }
+
+  async getTenantBotStatus(tenantId: string, useMainBotFallback = false): Promise<{ connected: boolean; botInfo: any }> {
     const token = this.getTenantBotToken(tenantId)
-    if (!token) return { connected: false, botInfo: null }
-    const info = this.getTenantBotInfo(tenantId)
-    if (info) return { connected: true, botInfo: info }
-    const fresh = await this.getBotInfo(token)
-    if (fresh) {
-      this.config.set(this.telegramInfoKey(tenantId), JSON.stringify(fresh))
-      return { connected: true, botInfo: fresh }
+    if (token) {
+      const info = this.getTenantBotInfo(tenantId)
+      if (info) return { connected: true, botInfo: info }
+      const fresh = await this.getBotInfo(token)
+      if (fresh) {
+        this.config.set(this.telegramInfoKey(tenantId), JSON.stringify(fresh))
+        return { connected: true, botInfo: fresh }
+      }
+      return { connected: false, botInfo: null }
+    }
+    if (useMainBotFallback && this.botToken) {
+      const mainInfo = await this.getBotInfo()
+      if (mainInfo) return { connected: true, botInfo: mainInfo }
     }
     return { connected: false, botInfo: null }
   }

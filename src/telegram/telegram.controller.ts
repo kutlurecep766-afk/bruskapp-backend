@@ -82,25 +82,31 @@ export class TelegramController {
   }
 
   @Post('tenant-connect')
-  async tenantConnect(@Req() req: any, @Body() body: { token: string }) {
-    const tenantId = req.user?.tenantId
+  async tenantConnect(@Req() req: any, @Body() body: { token: string; tenantId?: string }) {
+    const tenantId = body.tenantId || req.user?.tenantId
     if (!tenantId) return { success: false, message: 'Yetkilendirme gerekli' }
+    if (body.tenantId && req.user?.role !== 'SUPER_ADMIN') return { success: false, message: 'Bu islem icin super admin yetkisi gerekli' }
     if (!body.token) return { success: false, message: 'Token gerekli' }
+    if (body.token === this.telegramService.getMainBotToken()) {
+      return { success: false, message: 'Ana bot tokeni tenant botu olarak kullanilamaz' }
+    }
     return this.telegramService.connectTenantBot(tenantId, body.token)
   }
 
   @Post('tenant-disconnect')
-  async tenantDisconnect(@Req() req: any) {
-    const tenantId = req.user?.tenantId
+  async tenantDisconnect(@Req() req: any, @Body() body: { tenantId?: string }) {
+    const tenantId = body.tenantId || req.user?.tenantId
     if (!tenantId) return { success: false, message: 'Yetkilendirme gerekli' }
+    if (body.tenantId && req.user?.role !== 'SUPER_ADMIN') return { success: false, message: 'Bu islem icin super admin yetkisi gerekli' }
     return this.telegramService.disconnectTenantBot(tenantId)
   }
 
   @Post('tenant-status')
-  async tenantStatus(@Req() req: any) {
-    const tenantId = req.user?.tenantId
+  async tenantStatus(@Req() req: any, @Body() body: { tenantId?: string }) {
+    const tenantId = body.tenantId || req.user?.tenantId
     if (!tenantId) return { connected: false, botInfo: null }
-    return this.telegramService.getTenantBotStatus(tenantId)
+    const isAdmin = req.user?.role === 'SUPER_ADMIN'
+    return this.telegramService.getTenantBotStatus(tenantId, isAdmin)
   }
 
   @Public()
