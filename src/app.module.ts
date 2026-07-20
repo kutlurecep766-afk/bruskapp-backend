@@ -33,6 +33,8 @@ import { ZernioModule } from './zernio/zernio.module'
 import { AnalyticsModule } from './analytics/analytics.module'
 import { ErrorLogModule } from './error-log/error-log.module'
 import { HealthCheckModule } from './health-check/health-check.module'
+import { AppointmentsModule } from './appointments/appointments.module'
+import { ReservationsModule } from './reservations/reservations.module'
 
 @Global()
 @Module({
@@ -64,7 +66,7 @@ import { HealthCheckModule } from './health-check/health-check.module'
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, PushModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, ReportScheduleModule,  CommentsModule,  ReminderTemplatesModule,  BulkMessagesModule,  CampaignsModule,  PaymentsModule, UploadsModule,
     EInvoiceModule,
-    EncryptionModule, ZernioModule, AnalyticsModule, ErrorLogModule, HealthCheckModule,
+    EncryptionModule, ZernioModule, AnalyticsModule, ErrorLogModule, HealthCheckModule, AppointmentsModule, ReservationsModule,
   ],
   controllers: [AppController],
   providers: [

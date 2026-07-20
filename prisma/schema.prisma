@@ -140,6 +140,43 @@ model Order {
   @@index([tenantId, waiterId])
 }
 
+model Appointment {
+  id              Int      @id @default(autoincrement())
+  tenantId        String
+  platform        String   @default("webchat")
+  customerName    String
+  customerContact String?
+  date            DateTime
+  time            String?
+  service         String   @default("")
+  notes           String   @default("")
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+}
+
+model Reservation {
+  id              Int      @id @default(autoincrement())
+  tenantId        String
+  platform        String   @default("webchat")
+  customerName    String
+  customerContact String?
+  date            DateTime
+  time            String?
+  guests          Int      @default(2)
+  tableNumber     Int?
+  notes           String   @default("")
+  status          String   @default("pending")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
+}
+
 model Message {
   id        String   @id @default(uuid())
   platform  String

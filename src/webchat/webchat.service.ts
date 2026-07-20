@@ -1,7 +1,10 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common'
+import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common'
 import { TenantsService } from '../tenants/tenants.service'
 import { PrismaService } from '../prisma.service'
 import { ConfigService } from '../config.service'
+import { OrdersService } from '../orders/orders.service'
+import { AppointmentsService } from '../appointments/appointments.service'
+import { ReservationsService } from '../reservations/reservations.service'
 
 export interface Product {
   name: string
@@ -72,7 +75,14 @@ export class WebchatService {
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
-  constructor(private prisma: PrismaService, private tenantsService: TenantsService, private config: ConfigService) {
+  constructor(
+    private prisma: PrismaService,
+    private tenantsService: TenantsService,
+    private config: ConfigService,
+    @Optional() private ordersService?: OrdersService,
+    @Optional() private appointmentsService?: AppointmentsService,
+    @Optional() private reservationsService?: ReservationsService,
+  ) {
     this.aiApiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
     this.aiModel = process.env.AI_MODEL || 'deepseek-chat'
   }
@@ -207,7 +217,8 @@ export class WebchatService {
       conv.lastActivity = Date.now()
       const response = await this.generateResponse(short, conv, sessionId, short)
       conv.messages.push({ role: 'assistant', content: response })
-      await this.syncLead(sessionId, cleaned, response, conv).catch(() => {}); return response
+      await this.syncLead(sessionId, cleaned, response, conv).catch(() => {})
+      await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
     }
     const conv = this.getOrCreateConversation(sessionId)
     if (conv.messages.length >= MAX_CONV_MSGS * 2) {
@@ -217,7 +228,8 @@ export class WebchatService {
     conv.lastActivity = Date.now()
     const response = await this.generateResponse(cleaned, conv, sessionId, cleaned)
     conv.messages.push({ role: 'assistant', content: response })
-    await this.syncLead(sessionId, cleaned, response, conv).catch(() => {}); return response
+    await this.syncLead(sessionId, cleaned, response, conv).catch(() => {})
+    await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
   }
 
   private async loadConfigForSlug(slug: string): Promise<ChatBotConfig> {
@@ -454,6 +466,38 @@ export class WebchatService {
     const response = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
     conv.messages.push({ role: 'assistant', content: response })
     this.tenantsService.deductCredit(tenantId).catch(() => {})
+    // Multi-channel lead creation
+    try {
+      const existingLead = await this.prisma.lead.findFirst({ where: { sessionId: sessionKey }, orderBy: { createdAt: 'desc' } })
+      const uc = this.getOrCreateConversation(sessionKey)
+      const ucMsgs = uc.messages.map(m => ({ role: m.role, content: m.content }))
+      const needs = ucMsgs.map(m => m.content).join(' | ').slice(0, 500)
+      if (existingLead) {
+        await this.prisma.lead.update({ where: { id: existingLead.id }, data: { needs, conversation: ucMsgs.slice(-30) } })
+      } else {
+        await this.prisma.lead.create({
+          data: { sessionId: sessionKey, name: userId || platform + ' Kullanıcısı', needs, conversation: ucMsgs.slice(-30), source: platform },
+        })
+      }
+    } catch {}
+    // Intent detection for platform messages
+    try {
+      const featureTenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
+      const features = (featureTenant?.features as any) || {}
+      const pConv = this.getOrCreateConversation(sessionKey)
+      const allMsgs = pConv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
+      const lower = cleaned.toLowerCase()
+      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum'))) {
+        const productMatch = cleaned.match(/(\d+)\s*(?:adet|tane)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
+        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products: productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }], totalAmount: 0, note: 'AI ile oluşturuldu' }).catch(() => {})
+      }
+      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
+        if (this.appointmentsService) this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
+      }
+      if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt'))) {
+        if (this.reservationsService) this.reservationsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '20:00', guests: 2 }).catch(() => {})
+      }
+    } catch {}
     return response
   }
 
@@ -510,6 +554,80 @@ export class WebchatService {
     }
 
     return config.welcomeMessage
+  }
+
+  private async detectIntent(sessionId: string, message: string, response: string, conv: Conversation) {
+    try {
+      const slug = sessionId?.split(':')[0] || 'default'
+      const tenant = await this.prisma.tenant.findFirst({ where: { slug }, select: { id: true, features: true } })
+      if (!tenant?.id) return
+      const features = (tenant.features as any) || {}
+      const lower = message.toLowerCase()
+      const allMsgs = conv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
+
+      const phoneMatch = message.match(/(0[0-9]{10}|05[0-9]{9}|\+90[0-9]{10}|5[0-9]{9})/g)
+      const nameMatch = message.match(/(?:benim adım|adim|bana da|ben|bana|ismim) (.+?)(?:[,.]|\s|$)/i)
+      const customerName = nameMatch ? nameMatch[1].trim() : 'Web Chat Ziyaretçisi'
+      const customerContact = phoneMatch ? phoneMatch[0] : ''
+
+      // Sipariş tespiti
+      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir'))) {
+        if (this.ordersService) {
+          const productMatch = message.match(/(\d+)\s*(?:adet|tane|porsiyon|kg)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
+          const products = productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }]
+          await this.ordersService.create({
+            tenantId: tenant.id,
+            platform: 'webchat',
+            customerName,
+            customerContact,
+            products,
+            totalAmount: 0,
+            note: 'AI ile oluşturuldu',
+          }).catch(() => {})
+        }
+      }
+
+      // Randevu tespiti
+      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene') || allMsgs.includes('tedavi') || allMsgs.includes('kuaför') || allMsgs.includes('berber') || allMsgs.includes('doktor') || allMsgs.includes('klinik'))) {
+        if (this.appointmentsService) {
+          const dateMatch = message.match(/(\d{1,2})\s*(?:ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık|\.\d{1,2}\.\d{4}|\/\d{1,2}\/\d{4})/i)
+          const timeMatch = message.match(/(\d{1,2})[.:](\d{2})/)
+          const serviceMatch = message.match(/(?:için|randevusu|hizmeti)\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
+          const apptDate = dateMatch ? new Date(dateMatch[0]) : new Date(Date.now() + 86400000)
+          const apptTime = timeMatch ? timeMatch[0] : '10:00'
+          await this.appointmentsService.create({
+            tenantId: tenant.id,
+            platform: 'webchat',
+            customerName,
+            customerContact,
+            date: apptDate.toISOString(),
+            time: apptTime,
+            service: serviceMatch ? serviceMatch[1].trim() : '',
+          }).catch(() => {})
+        }
+      }
+
+      // Rezervasyon tespiti
+      if (features.reservations !== false && (allMsgs.includes('masa') || allMsgs.includes('rezervasyon') || allMsgs.includes('yer ayırt') || allMsgs.includes('yer ayır') || allMsgs.includes('arkadaş') || allMsgs.includes('grup') || allMsgs.includes('yemek'))) {
+        if (this.reservationsService) {
+          const dateMatch = message.match(/(\d{1,2})\s*(?:ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık|\.\d{1,2}\.\d{4}|\/\d{1,2}\/\d{4})/i)
+          const timeMatch = message.match(/(\d{1,2})[.:](\d{2})/)
+          const guestMatch = message.match(/(\d+)\s*(?:kişi|kisi|kişilik|kisilik|arkadaş|arkadas|grup)/i)
+          const resDate = dateMatch ? new Date(dateMatch[0]) : new Date(Date.now() + 86400000)
+          const resTime = timeMatch ? timeMatch[0] : '20:00'
+          const guests = guestMatch ? parseInt(guestMatch[1]) : 2
+          await this.reservationsService.create({
+            tenantId: tenant.id,
+            platform: 'webchat',
+            customerName,
+            customerContact,
+            date: resDate.toISOString(),
+            time: resTime,
+            guests,
+          }).catch(() => {})
+        }
+      }
+    } catch {}
   }
 
   private async syncLead(sessionId: string, message: string, response: string, conv: Conversation) {
