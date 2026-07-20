@@ -28,9 +28,13 @@ export class LeadService {
   }
 
   async findAll() {
-    return this.prisma.lead.findMany({
+    const leads = await this.prisma.lead.findMany({
       orderBy: { createdAt: 'desc' },
     })
+    return leads.map(l => ({
+      ...l,
+      hasAiReply: (l.conversation as any[])?.some((m: any) => m.role === 'assistant') || false,
+    }))
   }
 
   async findOne(id: number) {
