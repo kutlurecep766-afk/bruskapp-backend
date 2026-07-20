@@ -256,7 +256,10 @@ export class WebchatService {
     prompt += `- Bilgi havuzunda konuyla ilgili HICBIR SEY yoksa "Bu konuda su an bilgim yok" de.\n`
     prompt += `- KESINLIKLE kendi bilgini kullanma, HICBIR SEY UYDURMA. Sadece bilgi havuzundakini soyle.\n`
     prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
-    prompt += `- YETENEKLERIN: Siparis alabilir, randevu olusturabilir, rezervasyon yapabilir ve iptal edebilirsin. Kullanici bunlardan birini istedigi anda islemi onayla ve dogal bir dille cevap ver. Ornek: "Siparisinizi aldim" veya "Randevunuz olusturuldu" gibi.\n`
+    prompt += `- YETENEKLERIN: Siparis alabilir, randevu olusturabilir, rezervasyon yapabilir ve iptal edebilirsin.\n`
+    prompt += `- SIPARIS: Kullanici siparis vermek istedigi anda "Siparisinizi aldim" de ve onayla.\n`
+    prompt += `- RANDEVU/REZERVASYON: Kullanici randevu veya rezervasyon istedigi anda tarih ve saat bilgisini al, "Randevunuz/Rezervasyonunuz [tarih] [saat]'te olusturuldu" de.\n`
+    prompt += `- İPTAL: Kullanici iptal istedigi once "Iptal sebebinizi ogrenebilir miyim?" diye sor. Sebebi alinca "Iptaliniz gerceklestirildi" de. Hangi randevu/siparis oldugunu anlamak icin tarih veya urun adi iste. Ornek: "Hangi tarihteki randevunuzu iptal etmek istiyorsunuz?"\n`
     if (c.systemPrompt) prompt += `- ${c.systemPrompt}\n`
     if (c.knowledgeBase) {
       prompt += `\nBILGI HAVUZU:\n${c.knowledgeBase}\n`
