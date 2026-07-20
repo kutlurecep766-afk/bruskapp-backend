@@ -138,6 +138,16 @@ export class AuthController {
     return this.authService.register(dto.businessName, dto.email, dto.password)
   }
 
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(@Req() req: Request, @Body() body: { currentPassword: string; newPassword: string }) {
+    const user = req.user as any
+    if (!user || !user.userId) throw new UnauthorizedException('Oturum bulunamadi')
+    const result = await this.authService.changePassword(user.userId, body.currentPassword, body.newPassword)
+    if (!result) throw new UnauthorizedException('Mevcut sifre yanlis')
+    return { success: true }
+  }
+
   @Get('attempts')
   @UseGuards(AuthGuard('jwt'))
   async getLoginAttempts(@Query('limit') limit?: string) {

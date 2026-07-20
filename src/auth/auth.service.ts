@@ -115,6 +115,16 @@ export class AuthService {
     return !!(secret?.verified)
   }
 
+  async changePassword(userId: string, currentPassword: string, newPassword: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } })
+    if (!user) return false
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash)
+    if (!valid) return false
+    const passwordHash = await bcrypt.hash(newPassword, 12)
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } })
+    return true
+  }
+
   async register(businessName: string, email: string, password: string): Promise<{ slug: string }> {
     const existing = await this.prisma.user.findUnique({ where: { email } })
     if (existing) throw new UnauthorizedException('Bu e-posta zaten kayitli')
