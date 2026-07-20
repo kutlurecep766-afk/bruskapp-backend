@@ -243,6 +243,48 @@ export class WebchatService {
     return this.defaultConfig(tenant?.name)
   }
 
+  private async getUserRecordsContext(tenantId?: string, sessionId?: string, conv?: Conversation): Promise<string | null> {
+    try {
+      let tid = tenantId
+      if (!tid && sessionId) {
+        const slug = sessionId.split(':')[0] || 'default'
+        const t = await this.prisma.tenant.findFirst({ where: { slug }, select: { id: true } })
+        if (t) tid = t.id
+      }
+      if (!tid) return null
+
+      // Kullanici adini conversation'dan cikar
+      const userMsgs = conv?.messages?.filter(m => m.role === 'user').map(m => m.content).join(' ') || ''
+      const nameMatch = userMsgs.match(/(?:benim adım|adim|bana da|ben|bana|ismim) (.+?)(?:[,.]|\s|$)/i)
+      const customerName = nameMatch ? nameMatch[1].trim() : null
+
+      let ctx = '\nKULLANICI VERILERI (DB):\n'
+
+      if (customerName) {
+        // Aktif siparisler
+        const orders = await this.prisma.order.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
+        if (orders.length > 0) ctx += `- Aktif siparisleri: ${orders.map(o => `#${o.id} (${(o.products as any[])?.[0]?.name || 'urun'} - ${o.createdAt.toLocaleDateString('tr-TR')})`).join(', ')}\n`
+
+        // Aktif randevular
+        const appointments = await this.prisma.appointment.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
+        if (appointments.length > 0) ctx += `- Aktif randevulari: ${appointments.map(a => `${a.service || 'Randevu'} (${new Date(a.date).toLocaleDateString('tr-TR')} ${a.time || ''})`).join(', ')}\n`
+
+        // Aktif rezervasyonlar
+        const reservations = await this.prisma.reservation.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
+        if (reservations.length > 0) ctx += `- Aktif rezervasyonlari: ${reservations.map(r => `${r.guests} kisilik (${new Date(r.date).toLocaleDateString('tr-TR')} ${r.time || ''})`).join(', ')}\n`
+
+        if (orders.length === 0 && appointments.length === 0 && reservations.length === 0) {
+          ctx += '- Bu kullanicinin aktif siparis, randevu veya rezervasyonu bulunmamaktadir.\n'
+        }
+      } else {
+        ctx += '- Kullanici adi henuz bilinmiyor. Kullanici adini ogrenmek icin "Adinizi ogrenebilir miyim?" diye sor.\n'
+      }
+
+      ctx += 'Yukaridaki verileri kullanarak kullaniciya dogru bilgi ver. Kullanicinin kaydi yoksa "aktif kaydiniz bulunmamaktadir" de.\n'
+      return ctx
+    } catch { return null }
+  }
+
   private buildBaseSystem(config: ChatBotConfig): string {
     const c = config
     let prompt = `Sen ${c.businessName} işletmesinin yapay zeka asistanısın.\n`
@@ -519,6 +561,12 @@ export class WebchatService {
       conv.messages.push({ role: 'user', content: message })
     }
     const lower = message.toLowerCase().trim()
+
+    // Kullanicinin aktif kayitlarini DB'den getir ve AI context'ine ekle
+    const userContext = await this.getUserRecordsContext(tenantId, sessionId, conv).catch(() => null)
+    if (userContext) {
+      config = { ...config, systemPrompt: (config.systemPrompt || '') + '\n' + userContext }
+    }
 
     const aiResponse = await this.callAI(conv.messages, config)
     if (aiResponse) return aiResponse
