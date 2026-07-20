@@ -12,11 +12,8 @@ CREATE TABLE "Appointment" (
     "status" TEXT NOT NULL DEFAULT 'pending',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "Appointment_pkey" PRIMARY KEY ("id")
 );
-
--- CreateTable
 CREATE TABLE "Reservation" (
     "id" SERIAL NOT NULL,
     "tenantId" TEXT NOT NULL,
@@ -31,11 +28,8 @@ CREATE TABLE "Reservation" (
     "status" TEXT NOT NULL DEFAULT 'pending',
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
-
     CONSTRAINT "Reservation_pkey" PRIMARY KEY ("id")
 );
-
--- CreateIndex
 CREATE INDEX "Appointment_tenantId_createdAt_idx" ON "Appointment"("tenantId", "createdAt");
 CREATE INDEX "Appointment_tenantId_status_idx" ON "Appointment"("tenantId", "status");
 CREATE INDEX "Reservation_tenantId_createdAt_idx" ON "Reservation"("tenantId", "createdAt");
