@@ -522,7 +522,7 @@ export class WebchatService {
         await this.prisma.lead.update({ where: { id: existingLead.id }, data: { needs, conversation: ucMsgs.slice(-30) } })
       } else {
         await this.prisma.lead.create({
-          data: { sessionId: sessionKey, name: userId || platform + ' Kullanıcısı', needs, conversation: ucMsgs.slice(-30), source: platform }, tenantId
+          data: { sessionId: sessionKey, name: userId || platform + ' Kullanıcısı', needs, conversation: ucMsgs.slice(-30), source: platform, tenantId }
         })
       }
     } catch {}
@@ -744,7 +744,7 @@ export class WebchatService {
             needs: needs,
             conversation: convJson,
             source: 'webchat',
-            tenantId,
+            tenantId: tenantId as string,
           },
         })
       }
