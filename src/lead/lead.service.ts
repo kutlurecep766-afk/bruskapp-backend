@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 
 @Injectable()
@@ -13,6 +13,7 @@ export class LeadService {
     needs: string
     conversation: any[]
     source?: string
+    tenantId?: string
   }) {
     return this.prisma.lead.create({
       data: {
@@ -23,12 +24,14 @@ export class LeadService {
         needs: data.needs || '',
         conversation: data.conversation || [],
         source: data.source || 'webchat',
+        tenantId: data.tenantId,
       },
     })
   }
 
-  async findAll() {
+  async findAll(tenantId: string) {
     const leads = await this.prisma.lead.findMany({
+      where: { tenantId },
       orderBy: { createdAt: 'desc' },
     })
     return leads.map(l => ({
@@ -37,19 +40,27 @@ export class LeadService {
     }))
   }
 
-  async findOne(id: number) {
-    return this.prisma.lead.findUnique({ where: { id } })
+  async findOne(id: number, tenantId: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, tenantId },
+    })
+    if (!lead) throw new NotFoundException('Lead bulunamadi')
+    return lead
   }
 
-  async updateStatus(id: number, status: string, notes?: string) {
+  async updateStatus(id: number, status: string, tenantId: string, notes?: string) {
+    const lead = await this.prisma.lead.findFirst({
+      where: { id, tenantId },
+    })
+    if (!lead) throw new NotFoundException('Lead bulunamadi')
     return this.prisma.lead.update({
       where: { id },
       data: { status, ...(notes !== undefined ? { notes } : {}) },
     })
   }
 
-  async getStats() {
-    const all = await this.prisma.lead.findMany()
+  async getStats(tenantId: string) {
+    const all = await this.prisma.lead.findMany({ where: { tenantId } })
     return {
       total: all.length,
       yeni: all.filter(l => l.status === 'yeni').length,

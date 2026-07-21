@@ -217,7 +217,7 @@ export class WebchatService {
       conv.lastActivity = Date.now()
       const response = await this.generateResponse(short, conv, sessionId, short)
       conv.messages.push({ role: 'assistant', content: response })
-      await this.syncLead(sessionId, cleaned, response, conv).catch(() => {})
+      await this.syncLead(sessionId, cleaned, response, conv, await this.resolveTenantId(sessionId)).catch(() => {})
       await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
     }
     const conv = this.getOrCreateConversation(sessionId)
@@ -228,7 +228,7 @@ export class WebchatService {
     conv.lastActivity = Date.now()
     const response = await this.generateResponse(cleaned, conv, sessionId, cleaned)
     conv.messages.push({ role: 'assistant', content: response })
-    await this.syncLead(sessionId, cleaned, response, conv).catch(() => {})
+    await this.syncLead(sessionId, cleaned, response, conv, await this.resolveTenantId(sessionId)).catch(() => {})
     await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
   }
 
@@ -522,7 +522,7 @@ export class WebchatService {
         await this.prisma.lead.update({ where: { id: existingLead.id }, data: { needs, conversation: ucMsgs.slice(-30) } })
       } else {
         await this.prisma.lead.create({
-          data: { sessionId: sessionKey, name: userId || platform + ' Kullanıcısı', needs, conversation: ucMsgs.slice(-30), source: platform },
+          data: { sessionId: sessionKey, name: userId || platform + ' Kullanıcısı', needs, conversation: ucMsgs.slice(-30), source: platform }, tenantId
         })
       }
     } catch {}
@@ -706,7 +706,15 @@ export class WebchatService {
     } catch {}
   }
 
-  private async syncLead(sessionId: string, message: string, response: string, conv: Conversation) {
+
+  private async resolveTenantId(sessionId: string): Promise<string | undefined> {
+    try {
+      const slug = sessionId?.split(':')[0] || 'default'
+      const tenant = await this.prisma.tenant.findFirst({ where: { slug }, select: { id: true } })
+      return tenant?.id
+    } catch { return undefined }
+  }
+  private async syncLead(sessionId: string, message: string, response: string, conv: Conversation, tenantId?: string) {
     try {
       const namePattern = /(?:benim adım|adim|bana da|ben|bana) (.+?)(?:[,.]|\s|$)/i
       const phonePattern = /(0[0-9]{10}|05[0-9]{9}|\+90[0-9]{10}|5[0-9]{9}|\+90[0-9]{12})/g
@@ -736,6 +744,7 @@ export class WebchatService {
             needs: needs,
             conversation: convJson,
             source: 'webchat',
+            tenantId,
           },
         })
       }

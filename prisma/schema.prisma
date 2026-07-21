@@ -37,6 +37,7 @@ model Tenant {
   errorLogs     ErrorLog[]
   creditLogs    CreditLog[]
   weeklyWheels  WeeklyWheel[]
+  leads        Lead[]
 }
 
 model PaymentTransaction {
@@ -216,9 +217,12 @@ model Lead {
   source       String   @default("webchat")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([status, createdAt])
+  @@index([tenantId])
 }
 
 model TenantWhatsAppConfig {
