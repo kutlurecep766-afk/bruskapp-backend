@@ -24,7 +24,7 @@ export class LeadService {
         needs: data.needs || '',
         conversation: data.conversation || [],
         source: data.source || 'webchat',
-        tenantId: data.tenantId,
+        tenantId: data.tenantId!,
       },
     })
   }

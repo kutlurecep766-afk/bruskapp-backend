@@ -744,7 +744,7 @@ export class WebchatService {
             needs: needs,
             conversation: convJson,
             source: 'webchat',
-            tenantId: tenantId as string,
+            tenantId: tenantId!,
           },
         })
       }
