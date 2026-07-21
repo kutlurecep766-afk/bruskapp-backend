@@ -82,7 +82,7 @@ export class SystemHealthController {
         where,
         orderBy: { createdAt: 'desc' },
         take: 50,
-        include: { tenant: { select: { name: true, companyName: true } } },
+        include: { tenant: { select: { name: true } } },
       }),
       this.prisma.errorLog.count({ where }),
     ])
@@ -94,7 +94,7 @@ export class SystemHealthController {
       title: e.title,
       message: e.message,
       acknowledged: e.acknowledged,
-      tenantName: e.tenant?.companyName || e.tenant?.name || 'Bilinmiyor',
+      tenantName: e.tenant?.name || 'Bilinmiyor',
       tenantId: e.tenantId,
       createdAt: e.createdAt,
     }))
