@@ -6,7 +6,9 @@
     "build": "nest build",
     "start": "nest start",
     "start:dev": "nest start --watch",
-    "start:prod": "node dist/main"
+    "start:prod": "node dist/main",
+    "test": "jest --passWithNoTests",
+    "test:cov": "jest --coverage --passWithNoTests"
   },
   "dependencies": {
     "@bull-board/express": "^8.1.2",
@@ -41,17 +43,21 @@
   "devDependencies": {
     "@nestjs/cli": "10.4.9",
     "@nestjs/schematics": "10.2.3",
+    "@nestjs/testing": "^11.1.28",
     "@prisma/client": "5.22.0",
     "@types/bcryptjs": "2.4.6",
     "@types/cookie-parser": "1.4.10",
     "@types/express": "5.0.0",
+    "@types/jest": "^30.0.0",
     "@types/multer": "^2.1.0",
     "@types/node": "20.17.12",
     "@types/passport-jwt": "4.0.1",
     "@types/puppeteer": "^5.4.7",
     "@types/qrcode": "1.5.6",
     "@types/speakeasy": "2.0.10",
+    "jest": "^30.4.2",
     "prisma": "5.22.0",
+    "ts-jest": "^29.4.11",
     "ts-loader": "9.5.2",
     "ts-node": "10.9.2",
     "typescript": "5.7.3"

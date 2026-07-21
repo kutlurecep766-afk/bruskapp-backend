@@ -18,6 +18,7 @@ import { MessagesModule } from './messages/messages.module'
 import { ConfigService } from './config.service'
 import { AuthModule } from './auth/auth.module'
 import { LeadModule } from './lead/lead.module'
+import { SystemHealthModule } from './system-health/system-health.module'
 import { PrismaModule } from './prisma.module'
 import { TenantsModule } from './tenants/tenants.module'
 import { ReportScheduleModule } from './report-schedule/report-schedule.module'
@@ -44,6 +45,7 @@ import { ReservationsModule } from './reservations/reservations.module'
       adapter: ExpressAdapter,
     }),
     LeadModule,
+    SystemHealthModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 30,
