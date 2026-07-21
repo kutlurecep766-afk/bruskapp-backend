@@ -5,6 +5,7 @@ import { ConfigService } from '../config.service'
 import { OrdersService } from '../orders/orders.service'
 import { AppointmentsService } from '../appointments/appointments.service'
 import { ReservationsService } from '../reservations/reservations.service'
+import { MessagesService } from '../messages/messages.service'
 
 export interface Product {
   name: string
@@ -82,6 +83,7 @@ export class WebchatService {
     @Optional() private ordersService?: OrdersService,
     @Optional() private appointmentsService?: AppointmentsService,
     @Optional() private reservationsService?: ReservationsService,
+    @Optional() private messagesService?: MessagesService,
   ) {
     this.aiApiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
     this.aiModel = process.env.AI_MODEL || 'deepseek-chat'
@@ -210,6 +212,10 @@ export class WebchatService {
     if (!cleaned) {
       return 'Lütfen geçerli bir mesaj yazın.'
     }
+
+    // Save incoming message to DB for SSE
+    const tid = await this.resolveTenantId(sessionId).catch(() => null)
+
     if (cleaned.length > 500) {
       const short = cleaned.slice(0, 500) + '... [devamı kesildi]'
       const conv = this.getOrCreateConversation(sessionId)
@@ -217,7 +223,16 @@ export class WebchatService {
       conv.lastActivity = Date.now()
       const response = await this.generateResponse(short, conv, sessionId, short)
       conv.messages.push({ role: 'assistant', content: response })
-      await this.syncLead(sessionId, cleaned, response, conv, await this.resolveTenantId(sessionId)).catch(() => {})
+      if (tid) {
+        this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
+        this.messagesService?.create({ platform: 'webchat', from: 'AI Asistan', content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
+      }
+      await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
+            const tid2 = await this.resolveTenantId(sessionId).catch(() => null)
+      if (tid2) {
+        this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid2 }).catch(() => {})
+        this.messagesService?.create({ platform: 'webchat', from: 'AI Asistan', content: response, direction: 'outgoing', tenantId: tid2 }).catch(() => {})
+      }
       await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
     }
     const conv = this.getOrCreateConversation(sessionId)
@@ -228,7 +243,11 @@ export class WebchatService {
     conv.lastActivity = Date.now()
     const response = await this.generateResponse(cleaned, conv, sessionId, cleaned)
     conv.messages.push({ role: 'assistant', content: response })
-    await this.syncLead(sessionId, cleaned, response, conv, await this.resolveTenantId(sessionId)).catch(() => {})
+    if (tid) {
+      this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
+      this.messagesService?.create({ platform: 'webchat', from: 'AI Asistan', content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
+    }
+    await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
     await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
   }
 
