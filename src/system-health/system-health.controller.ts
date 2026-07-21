@@ -1,4 +1,4 @@
-import { Controller, Get, Req } from '@nestjs/common'
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 
 @Controller('system')
@@ -59,4 +59,45 @@ export class SystemHealthController {
 
     return checks
   }
+
+  @Get('health/errors')
+  async healthErrors(@Req() req: any, @Query('tenantId') tenantId?: string) {
+    const authHeader = req.headers?.authorization
+    let userTenantId: string | null = null
+    let isSuperAdmin = false
+
+    if (authHeader?.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.slice(7)
+        const jwt = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString())
+        if (jwt.role === 'SUPER_ADMIN') isSuperAdmin = true
+        else if (jwt.tenantId) userTenantId = jwt.tenantId
+      } catch {}
+    }
+
+    const where = isSuperAdmin ? (tenantId ? { tenantId } : {}) : { tenantId: userTenantId }
+
+    const [errors, total] = await Promise.all([
+      this.prisma.errorLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        include: { tenant: { select: { name: true, companyName: true } } },
+      }),
+      this.prisma.errorLog.count({ where }),
+    ])
+
+    return errors.map(e => ({
+      id: e.id,
+      type: e.type,
+      platform: e.platform,
+      title: e.title,
+      message: e.message,
+      acknowledged: e.acknowledged,
+      tenantName: e.tenant?.companyName || e.tenant?.name || 'Bilinmiyor',
+      tenantId: e.tenantId,
+      createdAt: e.createdAt,
+    }))
+  }
+
 }
