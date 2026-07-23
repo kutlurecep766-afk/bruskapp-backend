@@ -781,19 +781,20 @@ export class WebchatService {
 
   private async checkCredit(tenantId: string, platform?: string, from?: string): Promise<boolean> {
     try {
+      // Per-conversation override: can only BLOCK, can't force-ALLOW when global is OFF
       if (platform && from) {
         const override = await this.prisma.conversationAiOverride.findUnique({
           where: { tenantId_platform_from: { tenantId, platform, from } },
         })
         if (override && !override.aiEnabled) { this.logger.log(`checkCredit: override BLOCK tenant=${tenantId} plat=${platform} from=${from}`); return false }
-        if (override && override.aiEnabled) { this.logger.log(`checkCredit: override ALLOW tenant=${tenantId} plat=${platform} from=${from}`); return await this.tenantsService.deductCredit(tenantId) }
       }
+      // Global toggle always applies (overrides per-conversation allow)
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
         select: { aiEnabled: true },
       })
       if (tenant && !tenant.aiEnabled) { this.logger.log(`checkCredit: GLOBAL BLOCK tenant=${tenantId} aiEnabled=${tenant.aiEnabled} plat=${platform} from=${from}`); return false }
-      this.logger.log(`checkCredit: GLOBAL ALLOW tenant=${tenantId} aiEnabled=${tenant?.aiEnabled} plat=${platform} from=${from}`)
+      this.logger.log(`checkCredit: ALLOW tenant=${tenantId} aiEnabled=${tenant?.aiEnabled} plat=${platform} from=${from}`)
       return await this.tenantsService.deductCredit(tenantId)
     } catch (e: any) {
       this.logger.error('checkCredit hatasi: ' + (e?.message || 'bilinmeyen'))
