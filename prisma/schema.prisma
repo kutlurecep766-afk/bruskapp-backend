@@ -414,3 +414,15 @@ model ReportSchedule {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+model ConversationAiOverride {
+  id        String   @id @default(uuid())
+  tenantId  String
+  platform  String
+  from      String
+  aiEnabled Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, platform, from])
+}

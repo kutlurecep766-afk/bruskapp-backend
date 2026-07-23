@@ -499,7 +499,7 @@ export class WebchatService {
       const conv = this.getOrCreateConversation(sessionKey)
       conv.messages.push({ role: 'user', content: short })
       conv.lastActivity = Date.now()
-      const hasCredit = await this.checkCredit(tenantId)
+      const hasCredit = await this.checkCredit(tenantId, platform, userId)
       if (!hasCredit) return null
       const response = await this.generateResponse(short, conv, '', short, tenantId)
       conv.messages.push({ role: 'assistant', content: response })
@@ -514,7 +514,7 @@ export class WebchatService {
 
     conv.messages.push({ role: 'user', content: cleaned })
     conv.lastActivity = Date.now()
-    const hasCredit = await this.checkCredit(tenantId)
+    const hasCredit = await this.checkCredit(tenantId, platform, userId)
     if (!hasCredit) return null
     // Fetch campaigns for AI context
     let campaignContext = ''
@@ -776,8 +776,15 @@ export class WebchatService {
     return words.some(w => text.includes(w))
   }
 
-  private async checkCredit(tenantId: string): Promise<boolean> {
+  private async checkCredit(tenantId: string, platform?: string, from?: string): Promise<boolean> {
     try {
+      if (platform && from) {
+        const override = await this.prisma.conversationAiOverride.findUnique({
+          where: { tenantId_platform_from: { tenantId, platform, from } },
+        })
+        if (override && !override.aiEnabled) return false
+        if (override && override.aiEnabled) return await this.tenantsService.deductCredit(tenantId)
+      }
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
         select: { aiEnabled: true },

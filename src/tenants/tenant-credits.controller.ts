@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Req, NotFoundException, Body } from '@nestjs/common'
+import { Controller, Get, Post, Param, Req, NotFoundException, Body, Query } from '@nestjs/common'
 import { TenantsService } from './tenants.service'
 
 @Controller('tenant')
@@ -45,5 +45,27 @@ export class TenantCreditsController {
   async setAiToggle(@Req() req: any, @Body() body: { enabled: boolean }) {
     if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadi')
     return this.tenantsService.setAiToggle(req.user.tenantId, body.enabled)
+  }
+
+  @Post('ai-override')
+  async setAiOverride(@Req() req: any, @Body() body: { platform: string; from: string; aiEnabled: boolean }) {
+    if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadi')
+    if (!body.platform || !body.from) throw new NotFoundException('platform ve from gerekli')
+    return this.tenantsService.setAiOverride(req.user.tenantId, body.platform, body.from, body.aiEnabled)
+  }
+
+  @Get('ai-override')
+  async getAiOverride(@Req() req: any, @Query('platform') platform: string, @Query('from') from: string) {
+    if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadi')
+    if (platform && from) {
+      return this.tenantsService.getAiOverride(req.user.tenantId, platform, from)
+    }
+    return this.tenantsService.getAllAiOverrides(req.user.tenantId)
+  }
+
+  @Get('platforms')
+  async getPlatforms(@Req() req: any) {
+    if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadi')
+    return this.tenantsService.getConnectedPlatforms(req.user.tenantId)
   }
 }

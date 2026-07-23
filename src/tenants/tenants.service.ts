@@ -277,4 +277,60 @@ export class TenantsService {
       data: { aiEnabled: enabled },
     })
   }
+
+  async setAiOverride(tenantId: string, platform: string, from: string, aiEnabled: boolean) {
+    return this.prisma.conversationAiOverride.upsert({
+      where: { tenantId_platform_from: { tenantId, platform, from } },
+      update: { aiEnabled },
+      create: { tenantId, platform, from, aiEnabled },
+    })
+  }
+
+  async getAiOverride(tenantId: string, platform: string, from: string) {
+    const override = await this.prisma.conversationAiOverride.findUnique({
+      where: { tenantId_platform_from: { tenantId, platform, from } },
+    })
+    return override || { aiEnabled: null }
+  }
+
+  async getAllAiOverrides(tenantId: string) {
+    const overrides = await this.prisma.conversationAiOverride.findMany({
+      where: { tenantId },
+      select: { platform: true, from: true, aiEnabled: true },
+    })
+    const map: Record<string, boolean> = {}
+    for (const o of overrides) {
+      map[o.platform + ':' + o.from] = o.aiEnabled
+    }
+    return { overrides: map }
+  }
+
+  async getConnectedPlatforms(tenantId: string) {
+    const [tg, wa, ig, zernio, webchatConfig] = await Promise.all([
+      this.prisma.telegramConfig.findUnique({ where: { tenantId } }),
+      this.prisma.tenantWhatsAppConfig.findUnique({ where: { tenantId } }),
+      this.prisma.tenantInstagramConfig.findUnique({ where: { tenantId } }),
+      this.prisma.zernioConnection.findUnique({ where: { tenantId } }),
+      this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } }),
+    ])
+    const platforms: string[] = []
+    if (webchatConfig?.webchatConfig && typeof webchatConfig.webchatConfig === 'object' && Object.keys(webchatConfig.webchatConfig as any).length > 0) {
+      platforms.push('webchat')
+    }
+    if (tg?.active) platforms.push('telegram')
+    if (wa?.active) platforms.push('whatsapp')
+    if (ig?.active) platforms.push('instagram')
+    if (zernio?.platforms) {
+      const zp = zernio.platforms as any
+      if (Array.isArray(zp)) {
+        for (const p of zp) {
+          const pp = p.toLowerCase()
+          if (!platforms.includes(pp)) platforms.push(pp)
+        }
+      }
+    }
+    // Always include webchat as fallback
+    if (!platforms.includes('webchat')) platforms.push('webchat')
+    return platforms
+  }
 }
