@@ -131,6 +131,27 @@ export class MessagesController {
     return { success: true }
   }
 
+  @Post('send')
+  async sendMessage(@Req() req: Request, @Body('content') content: string, @Body('platform') platform: string, @Body('to') to: string) {
+    const user = req.user as any
+    if (!user) throw new HttpException('Yetkilendirme gerekli', HttpStatus.UNAUTHORIZED)
+    if (!content || !platform || !to) throw new HttpException('content, platform ve to gerekli', HttpStatus.BAD_REQUEST)
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { users: { some: { id: user.userId } } },
+      select: { id: true, name: true },
+    })
+    if (!tenant) throw new HttpException('Isletme bulunamadi', HttpStatus.NOT_FOUND)
+    const msg = await this.messagesService.create({
+      platform,
+      from: to,
+      content,
+      direction: 'outgoing',
+      fromName: tenant.name || 'Bruskapp AI',
+      tenantId: tenant.id,
+    })
+    return { success: true, message: msg }
+  }
+
   @Get()
   async findAll(
     @Req() req: Request,

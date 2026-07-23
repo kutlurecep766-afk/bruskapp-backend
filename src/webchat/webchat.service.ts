@@ -216,6 +216,15 @@ export class WebchatService {
     // Save incoming message to DB for SSE
     const tid = await this.resolveTenantId(sessionId).catch(() => null)
 
+    // Check credit and AI toggle before responding (for per-conversation override support)
+    if (tid) {
+      const hasCredit = await this.checkCredit(tid, 'webchat', sessionId).catch(() => true)
+      if (!hasCredit) {
+        this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
+        return ''
+      }
+    }
+
     if (cleaned.length > 500) {
       const short = cleaned.slice(0, 500) + '... [devamı kesildi]'
       const conv = this.getOrCreateConversation(sessionId)
@@ -228,11 +237,6 @@ export class WebchatService {
         this.messagesService?.create({ platform: 'webchat', from: 'AI Asistan', content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
       }
       await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
-            const tid2 = await this.resolveTenantId(sessionId).catch(() => null)
-      if (tid2) {
-        this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid2 }).catch(() => {})
-        this.messagesService?.create({ platform: 'webchat', from: 'AI Asistan', content: response, direction: 'outgoing', tenantId: tid2 }).catch(() => {})
-      }
       await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
     }
     const conv = this.getOrCreateConversation(sessionId)
