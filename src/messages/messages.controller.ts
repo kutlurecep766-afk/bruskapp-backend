@@ -146,7 +146,6 @@ export class MessagesController {
       from: to,
       content,
       direction: 'outgoing',
-      fromName: tenant.name || 'Bruskapp AI',
       tenantId: tenant.id,
     })
     return { success: true, message: msg }
