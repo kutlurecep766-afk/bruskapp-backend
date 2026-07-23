@@ -24,4 +24,4 @@ RUN mkdir -p /app/data/uploads && chown -R nodejs:nodejs /app/data
 USER nodejs
 EXPOSE 4000
 ENV PORT=4000
-CMD ["sh", "-c", "mkdir -p /app/data/uploads 2>/dev/null; chown -R nodejs:nodejs /app/data 2>/dev/null; npx prisma migrate deploy 2>/dev/null; node dist/main"]
+CMD ["sh", "-c", "mkdir -p /app/data/uploads 2>/dev/null; chown -R nodejs:nodejs /app/data 2>/dev/null; npx prisma migrate deploy; node dist/main"]
