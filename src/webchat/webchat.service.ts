@@ -785,14 +785,15 @@ export class WebchatService {
         const override = await this.prisma.conversationAiOverride.findUnique({
           where: { tenantId_platform_from: { tenantId, platform, from } },
         })
-        if (override && !override.aiEnabled) return false
-        if (override && override.aiEnabled) return await this.tenantsService.deductCredit(tenantId)
+        if (override && !override.aiEnabled) { this.logger.log(`checkCredit: override BLOCK tenant=${tenantId} plat=${platform} from=${from}`); return false }
+        if (override && override.aiEnabled) { this.logger.log(`checkCredit: override ALLOW tenant=${tenantId} plat=${platform} from=${from}`); return await this.tenantsService.deductCredit(tenantId) }
       }
       const tenant = await this.prisma.tenant.findUnique({
         where: { id: tenantId },
         select: { aiEnabled: true },
       })
-      if (tenant && !tenant.aiEnabled) return false
+      if (tenant && !tenant.aiEnabled) { this.logger.log(`checkCredit: GLOBAL BLOCK tenant=${tenantId} aiEnabled=${tenant.aiEnabled} plat=${platform} from=${from}`); return false }
+      this.logger.log(`checkCredit: GLOBAL ALLOW tenant=${tenantId} aiEnabled=${tenant?.aiEnabled} plat=${platform} from=${from}`)
       return await this.tenantsService.deductCredit(tenantId)
     } catch (e: any) {
       this.logger.error('checkCredit hatasi: ' + (e?.message || 'bilinmeyen'))
