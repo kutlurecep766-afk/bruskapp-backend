@@ -1,9 +1,10 @@
 import { Controller, Get, Post, Param, Req, NotFoundException, Body, Query } from '@nestjs/common'
 import { TenantsService } from './tenants.service'
+import { PrismaService } from '../prisma.service'
 
 @Controller('tenant')
 export class TenantCreditsController {
-  constructor(private tenantsService: TenantsService) {}
+  constructor(private tenantsService: TenantsService, private prisma: PrismaService) {}
 
   @Get('messages/usage')
   async getUsage(@Req() req: any) {
@@ -39,6 +40,13 @@ export class TenantCreditsController {
   async getStats(@Req() req: any) {
     if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadı')
     return this.tenantsService.getMessageStats(req.user.tenantId)
+  }
+
+  @Get('ai-toggle')
+  async getAiToggle(@Req() req: any) {
+    if (!req.user?.tenantId) throw new NotFoundException('Tenant bulunamadi')
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: req.user.tenantId }, select: { aiEnabled: true } })
+    return { aiEnabled: tenant?.aiEnabled ?? true }
   }
 
   @Post('ai-toggle')
