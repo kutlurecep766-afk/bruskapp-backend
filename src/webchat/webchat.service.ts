@@ -1,4 +1,4 @@
-import { Injectable, Inject, forwardRef, Optional } from '@nestjs/common'
+import { Injectable, Inject, forwardRef, Optional, Logger } from '@nestjs/common'
 import { TenantsService } from '../tenants/tenants.service'
 import { PrismaService } from '../prisma.service'
 import { ConfigService } from '../config.service'
@@ -70,6 +70,7 @@ const DEFAULT_CONFIG: ChatBotConfig = {
 
 @Injectable()
 export class WebchatService {
+  private readonly logger = new Logger(WebchatService.name)
   private conversations = new Map<string, Conversation>()
   private aiApiKey: string
   private aiModel: string
@@ -507,7 +508,6 @@ export class WebchatService {
       if (!hasCredit) return null
       const response = await this.generateResponse(short, conv, '', short, tenantId)
       conv.messages.push({ role: 'assistant', content: response })
-      this.tenantsService.deductCredit(tenantId).catch(() => {})
       return response
     }
 
@@ -534,7 +534,6 @@ export class WebchatService {
     const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
     const response = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
     conv.messages.push({ role: 'assistant', content: response })
-    this.tenantsService.deductCredit(tenantId).catch(() => {})
     // Multi-channel lead creation
     try {
       const existingLead = await this.prisma.lead.findFirst({ where: { sessionId: sessionKey }, orderBy: { createdAt: 'desc' } })
@@ -795,7 +794,8 @@ export class WebchatService {
       })
       if (tenant && !tenant.aiEnabled) return false
       return await this.tenantsService.deductCredit(tenantId)
-    } catch {
+    } catch (e: any) {
+      this.logger.error('checkCredit hatasi: ' + (e?.message || 'bilinmeyen'))
       return true
     }
   }
