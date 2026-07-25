@@ -46,7 +46,7 @@ const MAX_MSG_LENGTH = 2000
 const MAX_CONV_MSGS = 50
 const RATE_LIMIT_WINDOW = 60000
 const RATE_LIMIT_MAX = 20
-const AI_TIMEOUT = 10000
+const AI_TIMEOUT = 30000
 
 const HARMFUL_PATTERNS = [
   /yasa d[iı][sş][ıi]/i, /yasad[sş][ıi][zcs]/i, /hukuka ayk[iı]r[iı]/i,
@@ -397,13 +397,13 @@ export class WebchatService {
         model: this.aiModel,
         messages: aiMessages,
         temperature: 0,
-        max_tokens: 400
+        max_tokens: 1750
       })
 
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT)
 
-      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      let res = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -415,8 +415,23 @@ export class WebchatService {
       clearTimeout(timeout)
 
       if (!res.ok) {
-        const err = await res.text()
-        return null
+        const errStatus = res.status
+        const errBody = await res.text()
+        if (errStatus === 429 || errStatus === 503) {
+          await new Promise(r => setTimeout(r, 500))
+          const controller2 = new AbortController()
+          const timeout2 = setTimeout(() => controller2.abort(), AI_TIMEOUT)
+          res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.aiApiKey}` },
+            body,
+            signal: controller2.signal,
+          })
+          clearTimeout(timeout2)
+          if (!res.ok) return null
+        } else {
+          return null
+        }
       }
 
       const data = await res.json()
