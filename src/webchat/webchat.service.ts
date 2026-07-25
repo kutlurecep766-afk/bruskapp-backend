@@ -417,7 +417,7 @@ export class WebchatService {
       if (!res.ok) {
         const errStatus = res.status
         const errBody = await res.text()
-        if (errStatus === 429 || errStatus === 503) {
+        if (errStatus === 429 || errStatus === 500 || errStatus === 502 || errStatus === 503 || errStatus === 504) {
           await new Promise(r => setTimeout(r, 500))
           const controller2 = new AbortController()
           const timeout2 = setTimeout(() => controller2.abort(), AI_TIMEOUT)
