@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header, Optional, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common'
+import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { diskStorage } from 'multer'
 import * as path from 'path'
@@ -17,7 +17,7 @@ export class WhatsappController {
     private readonly messagesService: MessagesService,
     private readonly webchatService: WebchatService,
     private readonly prisma: PrismaService,
-    @Optional() private readonly aiQueue?: AiQueueService,
+    private readonly aiQueue: AiQueueService,
   ) {}
 
   @Get('config')

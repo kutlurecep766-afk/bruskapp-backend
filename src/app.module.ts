@@ -32,6 +32,7 @@ import { EInvoiceModule } from './einvoice/einvoice.module'
 import { EncryptionModule } from './common/encryption.module'
 import { ZernioModule } from './zernio/zernio.module'
 import { AiQueueModule } from './ai-queue/ai-queue.module'
+import { AiQueueProcessor } from './ai-queue/ai-queue.processor'
 import { AnalyticsModule } from './analytics/analytics.module'
 import { ErrorLogModule } from './error-log/error-log.module'
 import { HealthCheckModule } from './health-check/health-check.module'
@@ -76,6 +77,7 @@ import { ReservationsModule } from './reservations/reservations.module'
   providers: [
     AppService,
     ConfigService,
+    AiQueueProcessor,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
   exports: [ConfigService],

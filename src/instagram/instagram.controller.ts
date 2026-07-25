@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header, Optional } from '@nestjs/common'
+import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header } from '@nestjs/common'
 import { Public } from '../auth/public.decorator'
 import { InstagramService } from './instagram.service'
 import { MessagesService } from '../messages/messages.service'
@@ -13,7 +13,7 @@ export class InstagramController {
     private readonly messagesService: MessagesService,
     private readonly webchatService: WebchatService,
     private readonly prisma: PrismaService,
-    @Optional() private readonly aiQueue?: AiQueueService,
+    private readonly aiQueue: AiQueueService,
   ) {}
 
   @Get('config')

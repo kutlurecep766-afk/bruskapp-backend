@@ -4,9 +4,10 @@ import { InstagramController } from './instagram.controller'
 import { InstagramService } from './instagram.service'
 import { MessagesModule } from '../messages/messages.module'
 import { WebchatModule } from '../webchat/webchat.module'
+import { AiQueueModule } from '../ai-queue/ai-queue.module'
 
 @Module({
-  imports: [HttpModule, MessagesModule, WebchatModule],
+  imports: [HttpModule, MessagesModule, WebchatModule, AiQueueModule],
   controllers: [InstagramController],
   providers: [InstagramService],
   exports: [InstagramService],

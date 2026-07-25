@@ -4,9 +4,10 @@ import { MessagesModule } from '../messages/messages.module'
 import { WebchatModule } from '../webchat/webchat.module'
 import { TelegramController } from './telegram.controller'
 import { TelegramService } from './telegram.service'
+import { AiQueueModule } from '../ai-queue/ai-queue.module'
 
 @Module({
-  imports: [HttpModule, MessagesModule, WebchatModule],
+  imports: [HttpModule, MessagesModule, WebchatModule, AiQueueModule],
   controllers: [TelegramController],
   providers: [TelegramService],
   exports: [TelegramService],
