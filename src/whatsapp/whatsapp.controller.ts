@@ -7,6 +7,7 @@ import { WhatsappService } from './whatsapp.service'
 import { MessagesService } from '../messages/messages.service'
 import { WebchatService } from '../webchat/webchat.service'
 import { PrismaService } from '../prisma.service'
+import { AiQueueService } from '../ai-queue/ai-queue.service'
 import { SaveWhatsAppConfigDto, WhatsappSendDto } from './whatsapp.dto'
 
 @Controller('whatsapp')
@@ -16,6 +17,7 @@ export class WhatsappController {
     private readonly messagesService: MessagesService,
     private readonly webchatService: WebchatService,
     private readonly prisma: PrismaService,
+    private readonly aiQueue: AiQueueService,
   ) {}
 
   @Get('config')
@@ -187,43 +189,32 @@ export class WhatsappController {
         platform: 'whatsapp', from, content: text, messageId: msg.id, tenantId, direction: 'incoming',
       })
 
-      // AI auto-reply
+      // AI auto-reply (async via queue)
       if (!this.whatsappService.isAiPaused(tenantId, from)) {
-        ;(async () => {
-          try {
-            const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
-            const feats = (tenantData?.features as any) || {}
-            if (feats.aiAutoReply === false) return
-            const limit = feats.messageLimit || 0
+        try {
+          const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
+          const feats = (tenantData?.features as any) || {}
+          if (feats.aiAutoReply === false) continue
+          const limit = feats.messageLimit || 0
 
-            if (limit > 0) {
-              const startOfMonth = new Date()
-              startOfMonth.setDate(1)
-              startOfMonth.setHours(0, 0, 0, 0)
-              const monthCount = await this.prisma.message.count({
-                where: { tenantId, direction: 'outgoing', createdAt: { gte: startOfMonth } },
-              })
-              if (monthCount >= limit) return
-            }
-
-            // markAsRead + typing (Meta standart bilesik istek)
-            if (msg.id) {
-              this.whatsappService.markAsRead(tenantId, msg.id, true)
-            }
-
-            const reply = await this.webchatService.generatePlatformResponse(tenantId, "whatsapp", from, text)
-            if (reply && msg.id) {
-              const sendResult = await this.whatsappService.sendMessage(tenantId, from, reply)
-              const aiMsgId = sendResult.messageId
-              await this.messagesService.create({
-                platform: 'whatsapp', from, content: reply, tenantId, direction: 'outgoing',
-                messageId: aiMsgId, status: 'sent',
-              }).catch(() => {})
-            }
-          } catch (e) {
-            console.error('WhatsApp AI reply error:', e)
+          if (limit > 0) {
+            const startOfMonth = new Date()
+            startOfMonth.setDate(1)
+            startOfMonth.setHours(0, 0, 0, 0)
+            const monthCount = await this.prisma.message.count({
+              where: { tenantId, direction: 'outgoing', createdAt: { gte: startOfMonth } },
+            })
+            if (monthCount >= limit) continue
           }
-        })()
+
+          if (msg.id) {
+            this.whatsappService.markAsRead(tenantId, msg.id, true)
+          }
+
+          this.aiQueue.enqueue({ platform: 'whatsapp', tenantId, senderId: from, message: text }).catch(() => {})
+        } catch (e) {
+          console.error('WhatsApp AI queue error:', e)
+        }
       }
     }
     return { status: 'ok' }

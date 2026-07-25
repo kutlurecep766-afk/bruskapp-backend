@@ -153,11 +153,32 @@ export class WebchatService {
     return merged
   }
 
-  getOrCreateConversation(sessionId: string): Conversation {
-    let conv = this.conversations.get(sessionId)
+  async getOrCreateConversation(sessionKey: string, tenantId?: string): Promise<Conversation> {
+    let conv = this.conversations.get(sessionKey)
     if (!conv) {
       conv = { messages: [], lastActivity: Date.now() }
-      this.conversations.set(sessionId, conv)
+      try {
+        let tid = tenantId
+        if (!tid) {
+          const slug = sessionKey.split(':')[0]
+          const tenant = await this.prisma.tenant.findFirst({ where: { slug }, select: { id: true } })
+          if (tenant) tid = tenant.id
+        }
+        if (tid) {
+          const dbMsgs = await this.prisma.message.findMany({
+            where: { tenantId: tid, from: sessionKey },
+            orderBy: { createdAt: 'asc' },
+            take: 20,
+          })
+          for (const msg of dbMsgs) {
+            conv.messages.push({
+              role: msg.direction === 'incoming' ? 'user' : 'assistant',
+              content: msg.content,
+            })
+          }
+        }
+      } catch {}
+      this.conversations.set(sessionKey, conv)
     }
     const now = Date.now()
     for (const [id, c] of this.conversations) {
@@ -228,19 +249,19 @@ export class WebchatService {
 
     if (cleaned.length > 500) {
       const short = cleaned.slice(0, 500) + '... [devamı kesildi]'
-      const conv = this.getOrCreateConversation(sessionId)
+      const conv = await this.getOrCreateConversation(sessionId, tid || undefined)
       conv.messages.push({ role: 'user', content: short })
       conv.lastActivity = Date.now()
       const response = await this.generateResponse(short, conv, sessionId, short)
       conv.messages.push({ role: 'assistant', content: response })
       if (tid) {
         this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
-        this.messagesService?.create({ platform: 'webchat', from: 'AI Asistan', content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
+        this.messagesService?.create({ platform: 'webchat', from: sessionId, content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
       }
       await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
       await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
     }
-    const conv = this.getOrCreateConversation(sessionId)
+    const conv = await this.getOrCreateConversation(sessionId, tid || undefined)
     if (conv.messages.length >= MAX_CONV_MSGS * 2) {
       conv.messages.splice(0, 4)
     }
@@ -250,7 +271,7 @@ export class WebchatService {
     conv.messages.push({ role: 'assistant', content: response })
     if (tid) {
       this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
-      this.messagesService?.create({ platform: 'webchat', from: 'AI Asistan', content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
+      this.messagesService?.create({ platform: 'webchat', from: sessionId, content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
     }
     await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
     await this.detectIntent(sessionId, cleaned, response, conv).catch(() => {}); return response
@@ -321,6 +342,7 @@ export class WebchatService {
     prompt += `- Bilgi havuzunda konuyla ilgili bir sey VARSA onu cevapla, "bilgim yok" deme.\n`
     prompt += `- Bilgi havuzunda konuyla ilgili HICBIR SEY yoksa "Bu konuda su an bilgim yok" de.\n`
     prompt += `- KESINLIKLE kendi bilgini kullanma, HICBIR SEY UYDURMA. Sadece bilgi havuzundakini soyle.\n`
+    prompt += `- KESINLIKLE su tür genel cevaplari VERME: "Mesajiniz alindi", "En kisa surede donus yapilacaktir", "Iletilecektir", "Gerekli yonlendirme yapilacaktir". Bilgin yoksa direkt "Bu konuda su an bilgim yok" de.\n`
     prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
     prompt += `- YETENEKLERIN: Siparis alabilir, randevu olusturabilir, rezervasyon yapabilir ve iptal edebilirsin.\n`
     prompt += `- SIPARIS: Kullanici siparis vermek istedigi anda "Siparisinizi aldim" de ve onayla.\n`
@@ -339,7 +361,8 @@ export class WebchatService {
     const parts: string[] = []
 
     const matchedProducts = c.products.filter(p => {
-      const name = p.name.toLowerCase()
+      const name = (p.name || '').trim().toLowerCase()
+      if (!name) return false
       return lower.includes(name) || lower.split(/\s+/).some((w: string) => w.length >= 3 && name.includes(w))
     })
 
@@ -390,7 +413,7 @@ export class WebchatService {
         aiMessages.push({ role: 'system', content: 'SADECE şu bilgileri kullan. Kendi bilgini EKLEME, HİÇBİR ŞEY UYDURMA:\n' + context })
       }
 
-      const history = messages.slice(-8)
+      const history = messages.slice(-20)
       aiMessages.push(...history)
 
       const body = JSON.stringify({
@@ -516,7 +539,7 @@ export class WebchatService {
 
     if (cleaned.length > 500) {
       const short = cleaned.slice(0, 500) + '... [devamı kesildi]'
-      const conv = this.getOrCreateConversation(sessionKey)
+      const conv = await this.getOrCreateConversation(sessionKey, tenantId)
       conv.messages.push({ role: 'user', content: short })
       conv.lastActivity = Date.now()
       const hasCredit = await this.checkCredit(tenantId, platform, userId)
@@ -526,7 +549,7 @@ export class WebchatService {
       return response
     }
 
-    const conv = this.getOrCreateConversation(sessionKey)
+    const conv = await this.getOrCreateConversation(sessionKey, tenantId)
     if (conv.messages.length >= MAX_CONV_MSGS * 2) {
       conv.messages.splice(0, 4)
     }
@@ -552,7 +575,7 @@ export class WebchatService {
     // Multi-channel lead creation
     try {
       const existingLead = await this.prisma.lead.findFirst({ where: { sessionId: sessionKey }, orderBy: { createdAt: 'desc' } })
-      const uc = this.getOrCreateConversation(sessionKey)
+      const uc = await this.getOrCreateConversation(sessionKey, tenantId)
       const ucMsgs = uc.messages.map(m => ({ role: m.role, content: m.content }))
       const needs = ucMsgs.map(m => m.content).join(' | ').slice(0, 500)
       if (existingLead) {
@@ -567,7 +590,7 @@ export class WebchatService {
     try {
       const featureTenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
       const features = (featureTenant?.features as any) || {}
-      const pConv = this.getOrCreateConversation(sessionKey)
+      const pConv = await this.getOrCreateConversation(sessionKey, tenantId)
       const allMsgs = pConv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
       const lower = cleaned.toLowerCase()
       if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum'))) {
@@ -616,7 +639,8 @@ export class WebchatService {
     }
 
     const matchedProducts = config.products.filter(p => {
-      const name = p.name.toLowerCase()
+      const name = (p.name || '').trim().toLowerCase()
+      if (!name) return false
       return lower.includes(name)
     })
 
@@ -642,7 +666,7 @@ export class WebchatService {
       return 'Rica ederim!'
     }
 
-    return config.welcomeMessage
+    return ''
   }
 
   private async detectIntent(sessionId: string, message: string, aiResponse: string, conv: Conversation) {

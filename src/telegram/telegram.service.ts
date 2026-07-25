@@ -5,6 +5,7 @@ import { ConfigService } from '../config.service'
 import { MessagesService } from '../messages/messages.service'
 import { PrismaService } from '../prisma.service'
 import { WebchatService } from '../webchat/webchat.service'
+import { AiQueueService } from '../ai-queue/ai-queue.service'
 
 @Injectable()
 export class TelegramService implements OnModuleInit {
@@ -18,6 +19,7 @@ export class TelegramService implements OnModuleInit {
     @Optional() private readonly messagesService?: MessagesService,
     @Optional() private readonly prisma?: PrismaService,
     @Optional() private readonly webchatService?: WebchatService,
+    @Optional() private readonly aiQueue?: AiQueueService,
   ) {}
 
   private get botToken() {
@@ -306,39 +308,11 @@ export class TelegramService implements OnModuleInit {
       }).catch(e => this.logger.error('Mesaj kaydetme hatasi: ' + e.message))
     }
 
-    if (chatId && msg.text) {
-      let reply: string | null = ''
-      if (this.webchatService) {
-        try {
-          reply = await this.webchatService.generatePlatformResponse(tenantId, "telegram", from, msg.text)
-        } catch (e: any) {
-          this.logger.error('WebchatService hatasi (tenant webhook): ' + (e?.message || ''))
-          await this.logError('ai_error', 'telegram', tenantId, 'AI yanit hatasi', e?.message || 'Bilinmeyen hata', tenantId)
-        }
-      }
-      if (reply === null) return true
-      if (!reply) {
-        reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'
-      }
-      try {
-        await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/sendMessage', {
-          chat_id: chatId, text: reply, parse_mode: 'HTML',
-        }))
-        if (this.messagesService) {
-          await this.messagesService.create({
-            platform: 'telegram',
-            from: from,
-            fromName: fromName,
-            content: reply,
-            messageId: 'out_' + Date.now().toString(),
-            tenantId,
-            direction: 'outgoing',
-          }).catch(() => {})
-        }
-      } catch (e: any) {
-        this.logger.error('Oto-yanit hatasi: ' + (e?.message || ''))
-        await this.logError('platform_error', 'telegram', tenantId, 'Mesaj gonderilemedi', e?.message || 'Bilinmeyen hata', tenantId)
-      }
+    if (chatId && msg.text && this.aiQueue) {
+      this.aiQueue.enqueue({
+        platform: 'telegram', tenantId, senderId: from,
+        chatId, fromName, message: msg.text,
+      }).catch(() => {})
     }
     return true
   }
@@ -416,32 +390,14 @@ export class TelegramService implements OnModuleInit {
   }
 
   async autoReply(chatId: string, incomingText: string, from?: string): Promise<void> {
-    let reply: string | null = ''
-    if (this.webchatService && this.prisma && from) {
-      try {
-        const tenant = await this.prisma.tenant.findFirst({ where: { slug: 'default' }, select: { id: true } })
-        if (tenant) {
-          reply = await this.webchatService.generatePlatformResponse(tenant.id, 'telegram', from, incomingText)
-        }
-      } catch (e: any) {
-        this.logger.error('WebchatService hatasi (autoReply): ' + (e?.message || ''))
+    if (this.aiQueue && this.prisma && from) {
+      const tenant = await this.prisma.tenant.findFirst({ where: { slug: 'default' }, select: { id: true } }).catch(() => null)
+      if (tenant) {
+        this.aiQueue.enqueue({
+          platform: 'telegram', tenantId: tenant.id, senderId: from,
+          chatId, fromName: from, message: incomingText,
+        }).catch(() => {})
       }
-    }
-    if (reply === null) return
-    if (!reply) {
-      reply = this.config.get('TELEGRAM_AUTO_REPLY') || 'Mesajiniz alindi. En kisa surede donus yapilacaktir.'
-    }
-    await this.sendMessage(chatId, reply)
-    if (this.messagesService && this.prisma && from) {
-      const tenant = await this.prisma.tenant.findFirst({ where: { slug: 'default' }, select: { id: true } })
-      await this.messagesService.create({
-        platform: 'telegram',
-        from: from,
-        content: reply,
-        messageId: 'out_' + Date.now().toString(),
-        tenantId: tenant?.id || 'default',
-        direction: 'outgoing',
-      }).catch(() => {})
     }
   }
 

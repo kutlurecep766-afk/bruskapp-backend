@@ -31,6 +31,7 @@ import { PaymentsModule } from './payments/payments.module'
 import { EInvoiceModule } from './einvoice/einvoice.module'
 import { EncryptionModule } from './common/encryption.module'
 import { ZernioModule } from './zernio/zernio.module'
+import { AiQueueModule } from './ai-queue/ai-queue.module'
 import { AnalyticsModule } from './analytics/analytics.module'
 import { ErrorLogModule } from './error-log/error-log.module'
 import { HealthCheckModule } from './health-check/health-check.module'
@@ -69,6 +70,7 @@ import { ReservationsModule } from './reservations/reservations.module'
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, ReportScheduleModule,  CommentsModule,  ReminderTemplatesModule,  BulkMessagesModule,  CampaignsModule,  PaymentsModule, UploadsModule,
     EInvoiceModule,
     EncryptionModule, ZernioModule, AnalyticsModule, ErrorLogModule, HealthCheckModule, AppointmentsModule, ReservationsModule,
+    AiQueueModule,
   ],
   controllers: [AppController],
   providers: [

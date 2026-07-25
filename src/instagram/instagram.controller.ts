@@ -4,6 +4,7 @@ import { InstagramService } from './instagram.service'
 import { MessagesService } from '../messages/messages.service'
 import { WebchatService } from '../webchat/webchat.service'
 import { PrismaService } from '../prisma.service'
+import { AiQueueService } from '../ai-queue/ai-queue.service'
 
 @Controller('instagram')
 export class InstagramController {
@@ -12,6 +13,7 @@ export class InstagramController {
     private readonly messagesService: MessagesService,
     private readonly webchatService: WebchatService,
     private readonly prisma: PrismaService,
+    private readonly aiQueue: AiQueueService,
   ) {}
 
   @Get('config')
@@ -175,7 +177,7 @@ export class InstagramController {
           fromName: username || undefined,
         })
 
-        // AI auto-reply
+        // AI auto-reply (async via queue)
         if (!this.instagramService.isAiPaused(tenantId, senderId)) {
           try {
             const tenantData = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
@@ -193,15 +195,9 @@ export class InstagramController {
               if (monthCount >= limit) continue
             }
 
-            const reply = await this.webchatService.generatePlatformResponse(tenantId, "instagram", senderId, msg.text)
-            if (reply) {
-              await this.instagramService.sendMessage(tenantId, senderId, reply)
-              await this.messagesService.create({
-                platform: 'instagram', from: senderId, content: reply, tenantId, direction: 'outgoing', status: 'sent',
-              }).catch(() => {})
-            }
+            this.aiQueue.enqueue({ platform: 'instagram', tenantId, senderId, message: msg.text }).catch(() => {})
           } catch (e) {
-            console.error('Instagram AI reply error:', e)
+            console.error('Instagram AI queue error:', e)
           }
         }
       }
