@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header } from '@nestjs/common'
+import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header, Optional } from '@nestjs/common'
 import { Public } from '../auth/public.decorator'
 import { InstagramService } from './instagram.service'
 import { MessagesService } from '../messages/messages.service'
@@ -13,7 +13,7 @@ export class InstagramController {
     private readonly messagesService: MessagesService,
     private readonly webchatService: WebchatService,
     private readonly prisma: PrismaService,
-    private readonly aiQueue: AiQueueService,
+    @Optional() private readonly aiQueue?: AiQueueService,
   ) {}
 
   @Get('config')
@@ -195,7 +195,7 @@ export class InstagramController {
               if (monthCount >= limit) continue
             }
 
-            this.aiQueue.enqueue({ platform: 'instagram', tenantId, senderId, message: msg.text }).catch(() => {})
+            this.aiQueue?.enqueue({ platform: 'instagram', tenantId, senderId, message: msg.text }).catch(() => {})
           } catch (e) {
             console.error('Instagram AI queue error:', e)
           }

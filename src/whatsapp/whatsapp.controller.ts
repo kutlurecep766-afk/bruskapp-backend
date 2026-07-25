@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common'
+import { Controller, Post, Get, Body, Query, Req, ForbiddenException, Header, Optional, UseInterceptors, UploadedFile, BadRequestException } from '@nestjs/common'
 import { FileInterceptor } from '@nestjs/platform-express'
 import { diskStorage } from 'multer'
 import * as path from 'path'
@@ -17,7 +17,7 @@ export class WhatsappController {
     private readonly messagesService: MessagesService,
     private readonly webchatService: WebchatService,
     private readonly prisma: PrismaService,
-    private readonly aiQueue: AiQueueService,
+    @Optional() private readonly aiQueue?: AiQueueService,
   ) {}
 
   @Get('config')
@@ -211,7 +211,7 @@ export class WhatsappController {
             this.whatsappService.markAsRead(tenantId, msg.id, true)
           }
 
-          this.aiQueue.enqueue({ platform: 'whatsapp', tenantId, senderId: from, message: text }).catch(() => {})
+          this.aiQueue?.enqueue({ platform: 'whatsapp', tenantId, senderId: from, message: text }).catch(() => {})
         } catch (e) {
           console.error('WhatsApp AI queue error:', e)
         }
