@@ -558,6 +558,10 @@ export class WebchatService {
       conv.messages.splice(0, 4)
     }
 
+    const lastMsg = conv.messages[conv.messages.length - 1]
+    if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== cleaned) {
+      conv.messages.push({ role: 'user', content: cleaned })
+    }
     conv.lastActivity = Date.now()
     // Fetch campaigns for AI context
     let campaignContext = ''
