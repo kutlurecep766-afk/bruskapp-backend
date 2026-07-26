@@ -72,10 +72,11 @@ export class TelegramController {
         content,
         messageId: msg.message_id?.toString(),
         tenantId: (await this.prisma.tenant.findFirst({ where: { slug: 'default' }, select: { id: true } }))?.id || 'default',
+        direction: 'incoming',
       })
 
       if (chatId && msg.text) {
-        await this.telegramService.autoReply(chatId, msg.text)
+        await this.telegramService.autoReply(chatId, msg.text, from)
       }
     }
     return { status: 'ok' }
