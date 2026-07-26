@@ -631,40 +631,8 @@ export class WebchatService {
     const aiResponse = await this.callAI(conv.messages, config)
     if (aiResponse) return aiResponse
 
-    for (const faq of config.faqs) {
-      const q = faq.question.toLowerCase()
-      const qWords = q.split(/\s+/).filter((w: string) => w.length > 2)
-      const matched = qWords.filter((w: string) => lower.includes(w))
-      if (matched.length >= Math.ceil(qWords.length * 0.6)) return faq.answer
-    }
-
-    const matchedProducts = config.products.filter(p => {
-      const name = (p.name || '').trim().toLowerCase()
-      if (!name) return false
-      return lower.includes(name)
-    })
-
-    if (this.hasAnyWord(lower, ['merhaba', 'selam', 'hey', 'hi', 'hello', 'iyi gunler', 'günaydin', 'tünaydin', 'iyi aksamlar', 'kolay gelsin'])) {
-      return config.welcomeMessage
-    }
-
-    if (matchedProducts.length >= 1 && this.hasAnyWord(lower, ['fiyat', 'kac para', 'ne kadar', 'ucret'])) {
-      const p = matchedProducts[0]
-      return `${p.name} paketimiz ${p.price}. Detayli bilgi icin bize ulasabilirsiniz.`
-    }
-
-    if (matchedProducts.length === 1) {
-      const p = matchedProducts[0]
-      return `${p.name}: ${p.description} — ${p.price}.`
-    }
-
-    if (this.hasAnyWord(lower, ['adres', 'nerede', 'konum', 'telefon', 'iletisim', 'ulas', 'email', 'mail'])) {
-      return `Bize ulasin:\nE-posta: ${config.email}\nAdres: ${config.address}\nCalisma saatleri: ${config.hours}`
-    }
-
-    if (this.hasAnyWord(lower, ['tesekkur', 'sagol', 'eyvallah', 'tamamdir', 'anladim'])) {
-      return 'Rica ederim!'
-    }
+    const faq = config.faqs.find(f => f.question.toLowerCase().trim() === lower)
+    if (faq) return faq.answer
 
     return ''
   }
