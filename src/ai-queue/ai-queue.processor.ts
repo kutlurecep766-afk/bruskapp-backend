@@ -27,7 +27,7 @@ export class AiQueueProcessor extends WorkerHost {
 
     if (!reply) {
       this.logger.warn(`AI null/empty: plat=${platform} tenant=${tenantId} sender=${senderId} msg=${message.slice(0, 50)}`)
-      return
+      throw new Error(`AI null/empty for ${platform}/${tenantId}/${senderId}`)
     }
 
     switch (platform) {

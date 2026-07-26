@@ -469,6 +469,7 @@ export class WebchatService {
 
       return sanitized
     } catch (e: any) {
+      this.logger.error(`callAI hatasi: ${e?.message || 'bilinmeyen hata'}`)
       return null
     }
   }
@@ -557,7 +558,6 @@ export class WebchatService {
       conv.messages.splice(0, 4)
     }
 
-    conv.messages.push({ role: 'user', content: cleaned })
     conv.lastActivity = Date.now()
     // Fetch campaigns for AI context
     let campaignContext = ''
@@ -572,10 +572,7 @@ export class WebchatService {
     } catch {}
     const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
     const response = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
-    if (!response) {
-      conv.messages.pop()
-      return null
-    }
+    if (!response) return null
     conv.messages.push({ role: 'assistant', content: response })
     // Multi-channel lead creation
     try {
