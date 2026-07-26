@@ -17,8 +17,8 @@ export class AiQueueService {
 
   async enqueue(data: AiMessageJobData) {
     await this.queue.add('process-ai-message', data, {
-      attempts: 2,
-      backoff: { type: 'exponential', delay: 2000 },
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 1000 },
       removeOnComplete: { age: 3600 },
       removeOnFail: { age: 86400 },
     })

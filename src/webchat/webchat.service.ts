@@ -559,7 +559,7 @@ export class WebchatService {
     }
 
     const lastMsg = conv.messages[conv.messages.length - 1]
-    if (!lastMsg || lastMsg.role !== 'user' || lastMsg.content !== cleaned) {
+    if (!lastMsg || lastMsg.role !== 'user' || this.sanitizeInput(lastMsg.content) !== cleaned) {
       conv.messages.push({ role: 'user', content: cleaned })
     }
     conv.lastActivity = Date.now()
