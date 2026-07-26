@@ -153,7 +153,7 @@ export class WebchatService {
     return merged
   }
 
-  async getOrCreateConversation(sessionKey: string, tenantId?: string): Promise<Conversation> {
+  async getOrCreateConversation(sessionKey: string, tenantId?: string, from?: string): Promise<Conversation> {
     let conv = this.conversations.get(sessionKey)
     if (!conv) {
       conv = { messages: [], lastActivity: Date.now() }
@@ -166,7 +166,7 @@ export class WebchatService {
         }
         if (tid) {
           const dbMsgs = await this.prisma.message.findMany({
-            where: { tenantId: tid, from: sessionKey },
+            where: { tenantId: tid, from: from || sessionKey },
             orderBy: { createdAt: 'asc' },
             take: 20,
           })
@@ -539,25 +539,26 @@ export class WebchatService {
 
     if (cleaned.length > 500) {
       const short = cleaned.slice(0, 500) + '... [devamı kesildi]'
-      const conv = await this.getOrCreateConversation(sessionKey, tenantId)
-      conv.messages.push({ role: 'user', content: short })
-      conv.lastActivity = Date.now()
       const hasCredit = await this.checkCredit(tenantId, platform, userId)
       if (!hasCredit) return null
+      const conv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
+      conv.messages.push({ role: 'user', content: short })
+      conv.lastActivity = Date.now()
       const response = await this.generateResponse(short, conv, '', short, tenantId)
-      conv.messages.push({ role: 'assistant', content: response })
+      if (response) conv.messages.push({ role: 'assistant', content: response })
       return response
     }
 
-    const conv = await this.getOrCreateConversation(sessionKey, tenantId)
+    const hasCredit = await this.checkCredit(tenantId, platform, userId)
+    if (!hasCredit) return null
+
+    const conv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
     if (conv.messages.length >= MAX_CONV_MSGS * 2) {
       conv.messages.splice(0, 4)
     }
 
     conv.messages.push({ role: 'user', content: cleaned })
     conv.lastActivity = Date.now()
-    const hasCredit = await this.checkCredit(tenantId, platform, userId)
-    if (!hasCredit) return null
     // Fetch campaigns for AI context
     let campaignContext = ''
     try {
@@ -571,11 +572,15 @@ export class WebchatService {
     } catch {}
     const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
     const response = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
+    if (!response) {
+      conv.messages.pop()
+      return null
+    }
     conv.messages.push({ role: 'assistant', content: response })
     // Multi-channel lead creation
     try {
       const existingLead = await this.prisma.lead.findFirst({ where: { sessionId: sessionKey }, orderBy: { createdAt: 'desc' } })
-      const uc = await this.getOrCreateConversation(sessionKey, tenantId)
+      const uc = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       const ucMsgs = uc.messages.map(m => ({ role: m.role, content: m.content }))
       const needs = ucMsgs.map(m => m.content).join(' | ').slice(0, 500)
       if (existingLead) {
@@ -590,7 +595,7 @@ export class WebchatService {
     try {
       const featureTenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
       const features = (featureTenant?.features as any) || {}
-      const pConv = await this.getOrCreateConversation(sessionKey, tenantId)
+      const pConv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       const allMsgs = pConv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
       const lower = cleaned.toLowerCase()
       if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum'))) {
