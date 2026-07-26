@@ -76,7 +76,7 @@ export class TelegramController {
       })
 
       if (chatId && msg.text) {
-        await this.telegramService.autoReply(chatId, msg.text, from)
+        await this.telegramService.autoReply(chatId, msg.text)
       }
     }
     return { status: 'ok' }
