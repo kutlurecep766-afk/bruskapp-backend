@@ -78,13 +78,13 @@ export class OrdersController {
 
   @Public()
   @Get(':id')
-  async findById(@Param('id') id: string) {
-    return this.ordersService.findById(parseInt(id))
+  async findById(@Param('id') id: string, @Query('tenantId') tenantId: string) {
+    return this.ordersService.findById(parseInt(id), tenantId || 'default')
   }
 
   @Public()
   @Post(':id/status')
-  async updateStatus(@Param('id') id: string, @Body() body: { status: string }) {
-    return this.ordersService.updateStatus(parseInt(id), body.status)
+  async updateStatus(@Param('id') id: string, @Body() body: { status: string; tenantId: string }) {
+    return this.ordersService.updateStatus(parseInt(id), body.status, body.tenantId)
   }
 }

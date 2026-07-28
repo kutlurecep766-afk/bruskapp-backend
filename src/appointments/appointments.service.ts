@@ -28,7 +28,7 @@ export class AppointmentsService {
     })
   }
 
-  async updateStatus(id: number, status: string) {
-    return this.prisma.appointment.update({ where: { id }, data: { status } })
+  async updateStatus(id: number, status: string, tenantId: string) {
+    return this.prisma.appointment.update({ where: { id, tenantId }, data: { status } })
   }
 }

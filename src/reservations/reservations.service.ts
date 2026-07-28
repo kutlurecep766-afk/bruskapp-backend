@@ -29,7 +29,7 @@ export class ReservationsService {
     })
   }
 
-  async updateStatus(id: number, status: string) {
-    return this.prisma.reservation.update({ where: { id }, data: { status } })
+  async updateStatus(id: number, status: string, tenantId: string) {
+    return this.prisma.reservation.update({ where: { id, tenantId }, data: { status } })
   }
 }

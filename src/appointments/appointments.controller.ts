@@ -20,7 +20,7 @@ export class AppointmentsController {
 
   @Public()
   @Post(':id/status')
-  async updateStatus(@Param('id', ParseIntPipe) id: number, @Body() body: { status: string }) {
-    return this.service.updateStatus(id, body.status)
+  async updateStatus(@Param('id', ParseIntPipe) id: number, @Body() body: { status: string; tenantId: string }) {
+    return this.service.updateStatus(id, body.status, body.tenantId)
   }
 }

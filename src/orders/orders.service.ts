@@ -57,13 +57,13 @@ export class OrdersService {
     })
   }
 
-  async findById(id: number) {
-    return this.prisma.order.findUnique({ where: { id } })
+  async findById(id: number, tenantId: string) {
+    return this.prisma.order.findFirst({ where: { id, tenantId } })
   }
 
-  async updateStatus(id: number, status: string) {
+  async updateStatus(id: number, status: string, tenantId: string) {
     const order = await this.prisma.order.update({
-      where: { id },
+      where: { id, tenantId },
       data: { status },
     })
     this.orderEvents.next({ type: 'status_update', order })
