@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, ParseIntPipe } from '@nestjs/common'
+import { Controller, Get, Post, Param, Body, Query, ParseIntPipe, Req, BadRequestException } from '@nestjs/common'
 import { AppointmentsService } from './appointments.service'
 import { Public } from '../auth/public.decorator'
 
@@ -18,9 +18,10 @@ export class AppointmentsController {
     return this.service.findAll(tenantId)
   }
 
-  @Public()
   @Post(':id/status')
-  async updateStatus(@Param('id', ParseIntPipe) id: number, @Body() body: { status: string; tenantId: string }) {
-    return this.service.updateStatus(id, body.status, body.tenantId)
+  async updateStatus(@Param('id', ParseIntPipe) id: number, @Body() body: { status: string }, @Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.service.updateStatus(id, body.status, tenantId)
   }
 }

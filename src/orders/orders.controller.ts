@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Query, Logger, BadRequestException, ForbiddenException } from '@nestjs/common'
+import { Controller, Get, Post, Param, Body, Query, Req, Logger, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
@@ -76,15 +76,17 @@ export class OrdersController {
     return this.ordersService.findAll(tenantId || 'default', limit ? parseInt(limit) : 50)
   }
 
-  @Public()
   @Get(':id')
-  async findById(@Param('id') id: string, @Query('tenantId') tenantId: string) {
-    return this.ordersService.findById(parseInt(id), tenantId || 'default')
+  async findById(@Param('id') id: string, @Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.ordersService.findById(parseInt(id), tenantId)
   }
 
-  @Public()
   @Post(':id/status')
-  async updateStatus(@Param('id') id: string, @Body() body: { status: string; tenantId: string }) {
-    return this.ordersService.updateStatus(parseInt(id), body.status, body.tenantId)
+  async updateStatus(@Param('id') id: string, @Body() body: { status: string }, @Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.ordersService.updateStatus(parseInt(id), body.status, tenantId)
   }
 }
