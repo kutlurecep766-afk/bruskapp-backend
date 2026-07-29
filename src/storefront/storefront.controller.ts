@@ -50,7 +50,7 @@ export class StorefrontController {
   }
 
   @Post('admin/:tenantId/products')
-  async addProduct(@Req() req: any, @Param('tenantId') tenantId: string, @Body() body: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string }) {
+  async addProduct(@Req() req: any, @Param('tenantId') tenantId: string, @Body() body: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string; originalPrice?: number }) {
     this.checkAccess(req, tenantId)
     return this.service.addProduct(tenantId, body)
   }

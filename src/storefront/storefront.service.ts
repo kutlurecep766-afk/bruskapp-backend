@@ -27,7 +27,7 @@ export class StorefrontService {
     return cfg.products || []
   }
 
-  async addProduct(tenantId: string, product: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string }) {
+  async addProduct(tenantId: string, product: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string; originalPrice?: number }) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
@@ -38,7 +38,7 @@ export class StorefrontService {
     return newProduct
   }
 
-  async updateProduct(tenantId: string, productId: string, data: Partial<{ name: string; price: number; description: string; image: string; category: string; weight: string }>) {
+  async updateProduct(tenantId: string, productId: string, data: Partial<{ name: string; price: number; description: string; image: string; category: string; weight: string; originalPrice: number }>) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
