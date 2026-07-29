@@ -38,6 +38,7 @@ import { ErrorLogModule } from './error-log/error-log.module'
 import { HealthCheckModule } from './health-check/health-check.module'
 import { AppointmentsModule } from './appointments/appointments.module'
 import { ReservationsModule } from './reservations/reservations.module'
+import { StorefrontModule } from './storefront/storefront.module'
 
 @Global()
 @Module({
@@ -70,7 +71,8 @@ import { ReservationsModule } from './reservations/reservations.module'
     PrismaModule, UsersModule, WhatsappModule, TelegramModule, InstagramModule, PushModule,
     OrdersModule, NotificationsModule, MessagesModule, WebchatModule, AuthModule, TenantsModule, ReportScheduleModule,  CommentsModule,  ReminderTemplatesModule,  BulkMessagesModule,  CampaignsModule,  PaymentsModule, UploadsModule,
     EInvoiceModule,
-    EncryptionModule, ZernioModule, AnalyticsModule, ErrorLogModule, HealthCheckModule, AppointmentsModule, ReservationsModule,
+    EncryptionModule, ZernioModule, AnalyticsModule, ErrorLogModule, HealthCheckModule, AppointmentsModule,     ReservationsModule,
+    StorefrontModule,
     AiQueueModule,
   ],
   controllers: [AppController],
