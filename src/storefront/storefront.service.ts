@@ -14,6 +14,7 @@ export class StorefrontService {
       logoUrl: tenant.logoUrl,
       primaryColor: tenant.primaryColor,
       secondaryColor: tenant.secondaryColor,
+      bannerUrl: cfg.bannerUrl || '',
       products: cfg.products || [],
       masaNumbers: cfg.masaNumbers || [],
     }
@@ -54,10 +55,31 @@ export class StorefrontService {
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, products } } })
   }
 
-  async updateConfig(tenantId: string, config: { masaNumbers?: number[] }) {
+  async updateConfig(tenantId: string, config: { masaNumbers?: number[]; bannerUrl?: string }) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, ...config } } })
+  }
+
+  async updateLogo(tenantId: string, logoUrl: string) {
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { logoUrl } })
+  }
+
+  async getStorefront(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    if (!tenant) throw new NotFoundException('Isletme bulunamadi')
+    const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
+    return {
+      id: tenant.id,
+      name: tenant.siteTitle || tenant.name,
+      slug: tenant.slug,
+      logoUrl: tenant.logoUrl,
+      primaryColor: tenant.primaryColor,
+      secondaryColor: tenant.secondaryColor,
+      bannerUrl: cfg.bannerUrl || '',
+      products: cfg.products || [],
+      masaNumbers: cfg.masaNumbers || [],
+    }
   }
 }
