@@ -1,7 +1,6 @@
 import { Injectable, Inject, forwardRef, Optional, Logger } from '@nestjs/common'
 import { TenantsService } from '../tenants/tenants.service'
 import { PrismaService } from '../prisma.service'
-import { ConfigService } from '../config.service'
 import { OrdersService } from '../orders/orders.service'
 import { AppointmentsService } from '../appointments/appointments.service'
 import { ReservationsService } from '../reservations/reservations.service'
@@ -80,7 +79,6 @@ export class WebchatService {
   constructor(
     private prisma: PrismaService,
     private tenantsService: TenantsService,
-    private config: ConfigService,
     @Optional() private ordersService?: OrdersService,
     @Optional() private appointmentsService?: AppointmentsService,
     @Optional() private reservationsService?: ReservationsService,
@@ -104,16 +102,6 @@ export class WebchatService {
 
     if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
       return { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
-    }
-
-    // DB'de yoksa config.json yediginden dene
-    const backupKey = 'webchat_config_' + tenantId
-    const backup = this.config.get(backupKey)
-    if (backup) {
-      try {
-        const parsed = JSON.parse(backup)
-        return { ...this.defaultConfig(tenant?.name), ...parsed }
-      } catch {}
     }
 
     return this.defaultConfig(tenant?.name)
@@ -149,7 +137,6 @@ export class WebchatService {
       where: { id: tenantId },
       data: { webchatConfig: merged as any },
     })
-    this.config.set('webchat_config_' + tenantId, JSON.stringify(merged))
     return merged
   }
 
