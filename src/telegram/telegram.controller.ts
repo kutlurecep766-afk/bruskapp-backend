@@ -64,11 +64,13 @@ export class TelegramController {
       const msg = body.message
       const chatId = msg.chat?.id?.toString()
       const from = msg.from?.username || msg.from?.id?.toString() || 'unknown'
+      const fromName = msg.from?.username || msg.from?.first_name || msg.from?.last_name || ''
       const content = msg.text || '(media)'
 
       await this.messagesService.create({
         platform: 'telegram',
         from,
+        fromName: fromName || undefined,
         content,
         messageId: msg.message_id?.toString(),
         tenantId: (await this.prisma.tenant.findFirst({ where: { slug: 'default' }, select: { id: true } }))?.id || 'default',

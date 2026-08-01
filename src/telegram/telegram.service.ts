@@ -292,7 +292,7 @@ export class TelegramService implements OnModuleInit {
     const chatId = msg.chat?.id?.toString()
     const from = msg.from?.username || msg.from?.id?.toString() || 'unknown'
     const content = msg.text || '(media)'
-    const fromName = msg.from?.first_name || ''
+    const fromName = msg.from?.username || msg.from?.first_name || ''
     if (chatId) this.config.set(this.telegramChatIdKey(tenantId), chatId)
     this.logger.log('Tenant [' + tenantId + '] mesaj: ' + from + ' -> ' + content.substring(0, 50))
 

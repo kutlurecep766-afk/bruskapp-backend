@@ -164,8 +164,23 @@ export class InstagramController {
         // skip echoes (messages we sent ourselves)
         if (msg.is_echo) continue
 
-        // fetch username
-        const username = await this.instagramService.getUsername(tenantId, senderId).catch(() => null)
+        // fetch username (webhook payload or Graph API fallback)
+        const webhookName = msg.from?.name || event.sender?.name || null
+        let username: string | null = null
+        try {
+          const fetched = await this.instagramService.getUsername(tenantId, senderId).catch(() => null)
+          username = fetched || webhookName || null
+        } catch {
+          username = webhookName
+        }
+        if (!username) {
+          const prev = await this.prisma.message.findFirst({
+            where: { platform: 'instagram', from: senderId, tenantId, fromName: { not: null } },
+            orderBy: { createdAt: 'desc' },
+            select: { fromName: true },
+          }).catch(() => null)
+          username = prev?.fromName || null
+        }
 
         await this.messagesService.create({
           platform: 'instagram',
