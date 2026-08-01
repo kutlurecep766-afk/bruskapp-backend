@@ -10,6 +10,7 @@ export class StorefrontService {
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
     return {
+      id: tenant.id,
       name: tenant.siteTitle || tenant.name,
       logoUrl: tenant.logoUrl,
       primaryColor: tenant.primaryColor,
