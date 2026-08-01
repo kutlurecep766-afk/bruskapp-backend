@@ -211,7 +211,7 @@ export class WhatsappController {
             this.whatsappService.markAsRead(tenantId, msg.id, true)
           }
 
-          this.aiQueue?.enqueue({ platform: 'whatsapp', tenantId, senderId: from, message: text }).catch(() => {})
+          this.aiQueue?.enqueue({ platform: 'whatsapp', tenantId, senderId: from, message: text, fromName: from }).catch(() => {})
         } catch (e) {
           console.error('WhatsApp AI queue error:', e)
         }

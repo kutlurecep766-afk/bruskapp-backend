@@ -210,7 +210,7 @@ export class InstagramController {
               if (monthCount >= limit) continue
             }
 
-            this.aiQueue?.enqueue({ platform: 'instagram', tenantId, senderId, message: msg.text }).catch(() => {})
+            this.aiQueue?.enqueue({ platform: 'instagram', tenantId, senderId, message: msg.text, fromName: username || undefined }).catch(() => {})
           } catch (e) {
             console.error('Instagram AI queue error:', e)
           }

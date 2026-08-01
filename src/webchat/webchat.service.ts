@@ -513,7 +513,7 @@ export class WebchatService {
     return clean
   }
 
-  async generatePlatformResponse(tenantId: string, platform: string, userId: string, message: string): Promise<string | null> {
+  async generatePlatformResponse(tenantId: string, platform: string, userId: string, message: string, fromName?: string): Promise<string | null> {
     const sessionKey = `${platform}:${tenantId}:${userId}`
 
     if (!this.checkSessionRate(sessionKey)) {
@@ -571,11 +571,12 @@ export class WebchatService {
       const uc = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       const ucMsgs = uc.messages.map(m => ({ role: m.role, content: m.content }))
       const needs = ucMsgs.map(m => m.content).join(' | ').slice(0, 500)
+      const leadName = fromName || userId || platform + ' Kullanıcısı'
       if (existingLead) {
-        await this.prisma.lead.update({ where: { id: existingLead.id }, data: { needs, conversation: ucMsgs.slice(-30) } })
+        await this.prisma.lead.update({ where: { id: existingLead.id }, data: { name: leadName, needs, conversation: ucMsgs.slice(-30) } })
       } else {
         await this.prisma.lead.create({
-          data: { sessionId: sessionKey, name: userId || platform + ' Kullanıcısı', needs, conversation: ucMsgs.slice(-30), source: platform, tenantId }
+          data: { sessionId: sessionKey, name: leadName, needs, conversation: ucMsgs.slice(-30), source: platform, tenantId }
         })
       }
     } catch {}

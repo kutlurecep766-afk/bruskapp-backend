@@ -23,7 +23,7 @@ export class AiQueueProcessor extends WorkerHost {
   async process(job: Job<AiMessageJobData>): Promise<void> {
     const { platform, tenantId, senderId, message } = job.data
 
-    const reply = await this.webchatService.generatePlatformResponse(tenantId, platform, senderId, message)
+    const reply = await this.webchatService.generatePlatformResponse(tenantId, platform, senderId, message, job.data.fromName)
 
     if (!reply) {
       this.logger.warn(`AI null/empty: plat=${platform} tenant=${tenantId} sender=${senderId} msg=${message.slice(0, 50)}`)
