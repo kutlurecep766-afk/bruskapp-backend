@@ -174,6 +174,21 @@ export class WebchatService {
     return conv
   }
 
+  private isGreetingOnly(text: string): boolean {
+    const greetings = new Set([
+      'merhaba', 'merhabalar', 'selam', 'selamlar', 'slm', 'hi', 'hey', 'hello',
+      'gunaydin', 'günaydın', 'iyi gunler', 'iyi günler', 'iyi aksanlar', 'iyi akşamlar',
+      'iyi geceler', 'nasilsin', 'nasılsın', 'nasilsiniz', 'nasılsınız', 'naber', 'hola',
+    ])
+    const lower = text.toLowerCase().trim()
+    const tokens = lower
+      .replace(/[.,!?;:…"'"']/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean)
+    if (tokens.length === 0) return false
+    return tokens.every(t => greetings.has(t))
+  }
+
   private checkSessionRate(key: string): boolean {
     const now = Date.now()
     const entry = this.sessionRateMap.get(key)
@@ -523,6 +538,14 @@ export class WebchatService {
     const cleaned = this.sanitizeInput(message)
     if (!cleaned) {
       return null
+    }
+
+    // Saf selamlama mesajlarinda AI'a gitmeden isletmenin kendi karsilama mesajini gonder
+    if (this.isGreetingOnly(cleaned)) {
+      try {
+        const config = await this.getConfig(tenantId)
+        if (config.welcomeMessage) return config.welcomeMessage
+      } catch {}
     }
 
     if (cleaned.length > 500) {
