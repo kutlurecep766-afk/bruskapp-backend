@@ -4,6 +4,8 @@ import { lastValueFrom } from 'rxjs'
 import * as crypto from 'crypto'
 import { ConfigService } from '../config.service'
 import { PrismaService } from '../prisma.service'
+import { MessagesService } from '../messages/messages.service'
+import { AiQueueService } from '../ai-queue/ai-queue.service'
 
 @Injectable()
 export class ZernioService implements OnModuleInit {
@@ -15,6 +17,8 @@ export class ZernioService implements OnModuleInit {
     private readonly http: HttpService,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly messagesService: MessagesService,
+    private readonly aiQueue: AiQueueService,
   ) {}
 
   private get apiKey() { return this.config.get('ZERNIO_API_KEY') || '' }
@@ -357,6 +361,29 @@ export class ZernioService implements OnModuleInit {
     return computed === signature
   }
 
+  async sendMessage(tenantId: string, platform: string, conversationId: string, text: string): Promise<boolean> {
+    const rawPlatform = platform.startsWith('zernio_') ? platform.replace('zernio_', '') : platform
+    try {
+      const conn = await this.prisma.zernioConnection.findUnique({ where: { tenantId } })
+      const platforms = (conn?.platforms as any[] || [])
+      const account = platforms.find(p => p.platform === rawPlatform)
+      const accountId = account?.accountId || platforms[0]?.accountId
+      if (!accountId) {
+        this.logger.warn('Zernio account bulunamadi (tenant=' + tenantId + ' platform=' + rawPlatform + ')')
+        return false
+      }
+      const url = this.apiBase + '/inbox/conversations/' + encodeURIComponent(conversationId) + '/messages'
+      const res = await lastValueFrom(this.http.post(url, {
+        accountId,
+        message: text,
+      }, { headers: this.headers(), timeout: 15000 }))
+      return !!res.data
+    } catch (e: any) {
+      this.logger.error('Zernio mesaj gonderilemedi: ' + (e?.message || ''))
+      return false
+    }
+  }
+
   async handleWebhook(body: any, rawBody?: string, signature?: string): Promise<boolean> {
     if (signature && !this.verifySignature(rawBody || '', signature)) {
       this.logger.warn('Webhook imza dogrulamasi BASARISIZ')
@@ -372,21 +399,50 @@ export class ZernioService implements OnModuleInit {
       if (profileId) {
         const conn = await this.prisma.zernioConnection.findFirst({ where: { profileId } })
         if (conn?.tenantId) {
-          const platform = payload?.account?.platform || 'unknown'
-          const from = payload?.message?.from || payload?.message?.sender?.name || payload?.from || 'unknown'
-          const content = payload?.message?.text || payload?.message?.content || payload?.text || ''
-          const messageId = body?.id || payload?.message?._id || Date.now().toString()
+          const platform = payload?.account?.platform || payload?.platform || 'unknown'
+          const senderId = payload?.sender?.id || payload?.message?.sender?.id || payload?.message?.from || payload?.from || 'unknown'
+          const fromName = payload?.sender?.name || payload?.message?.sender?.name || null
+          const conversationId = payload?.conversationId || payload?.conversation?.id || payload?.message?.conversationId || ''
+          const content = payload?.text || payload?.message?.text || payload?.message?.content || payload?.text || ''
+          const messageId = body?.id || payload?.messageId || payload?.message?._id || Date.now().toString()
 
-          await this.prisma.message.create({
-            data: {
-              platform: 'zernio_' + platform,
-              from,
-              content,
-              messageId,
-              tenantId: conn.tenantId,
-              direction: 'incoming',
-            },
+          await this.messagesService.create({
+            platform: 'zernio_' + platform,
+            from: senderId,
+            fromName: fromName || undefined,
+            content,
+            messageId,
+            tenantId: conn.tenantId,
+            direction: 'incoming',
           }).catch(e => this.logger.error('Mesaj kaydetme hatasi: ' + e.message))
+
+          // AI auto-reply via queue
+          if (!content) return true
+          try {
+            const tenantData = await this.prisma.tenant.findUnique({ where: { id: conn.tenantId }, select: { features: true } })
+            const feats = (tenantData?.features as any) || {}
+            if (feats.aiAutoReply === false) return true
+            const limit = feats.messageLimit || 0
+            if (limit > 0) {
+              const startOfMonth = new Date()
+              startOfMonth.setDate(1)
+              startOfMonth.setHours(0, 0, 0, 0)
+              const monthCount = await this.prisma.message.count({
+                where: { tenantId: conn.tenantId, direction: 'outgoing', createdAt: { gte: startOfMonth } },
+              })
+              if (monthCount >= limit) return true
+            }
+            await this.aiQueue.enqueue({
+              platform: 'zernio_' + platform,
+              tenantId: conn.tenantId,
+              senderId,
+              message: content,
+              chatId: conversationId || senderId,
+              fromName: fromName || undefined,
+            }).catch(e => this.logger.error('Zernio AI queue hatasi: ' + (e?.message || '')))
+          } catch (e) {
+            this.logger.error('Zernio AI auto-reply hatasi: ' + (e?.message || ''))
+          }
         }
       }
     }

@@ -4,6 +4,7 @@ import { WebchatService } from '../webchat/webchat.service'
 import { InstagramService } from '../instagram/instagram.service'
 import { TelegramService } from '../telegram/telegram.service'
 import { WhatsappService } from '../whatsapp/whatsapp.service'
+import { ZernioService } from '../zernio/zernio.service'
 import { MessagesService } from '../messages/messages.service'
 import { Logger } from '@nestjs/common'
 import { AiMessageJobData } from './ai-queue.service'
@@ -17,6 +18,7 @@ export class AiQueueProcessor extends WorkerHost {
     private instagramService: InstagramService,
     private telegramService: TelegramService,
     private whatsappService: WhatsappService,
+    private zernioService: ZernioService,
     private messagesService: MessagesService,
   ) { super() }
 
@@ -30,6 +32,11 @@ export class AiQueueProcessor extends WorkerHost {
       throw new Error(`AI null/empty for ${platform}/${tenantId}/${senderId}`)
     }
 
+    if (platform.startsWith('zernio_')) {
+      await this.sendZernio(job.data, reply)
+      return
+    }
+
     switch (platform) {
       case 'instagram':
         await this.sendInstagram(tenantId, senderId, reply)
@@ -40,6 +47,16 @@ export class AiQueueProcessor extends WorkerHost {
       case 'whatsapp':
         await this.sendWhatsapp(tenantId, senderId, reply)
         break
+    }
+  }
+
+  private async sendZernio(data: AiMessageJobData, reply: string) {
+    const ok = await this.zernioService.sendMessage(data.tenantId, data.platform, data.chatId || data.senderId, reply)
+    if (ok) {
+      await this.messagesService.create({
+        platform: data.platform, from: data.senderId, fromName: data.fromName || '',
+        content: reply, messageId: 'out_' + Date.now().toString(), tenantId: data.tenantId, direction: 'outgoing',
+      }).catch(() => {})
     }
   }
 

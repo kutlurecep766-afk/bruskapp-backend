@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
 
 export interface AiMessageJobData {
-  platform: 'instagram' | 'telegram' | 'whatsapp'
+  platform: string
   tenantId: string
   senderId: string
   message: string
