@@ -341,10 +341,10 @@ export class WebchatService {
     prompt += `- Turkce, kisa ve oz cevap ver.\n`
     prompt += `- ZORUNLU: Tum Turkce karakterleri dogru kullan.\n`
     prompt += `- ASAGIDAKI BILGI HAVUZUNU KULLAN. Kullanici sorusunu oku, bilgi havuzunda AYNI KONUYU bul, buldugun bilgiyi cevap olarak ver.\n`
-    prompt += `- Bilgi havuzunda konuyla ilgili bir sey VARSA onu cevapla, "bilgim yok" deme.\n`
-    prompt += `- Bilgi havuzunda konuyla ilgili HICBIR SEY yoksa "Bu konuda su an bilgim yok" de.\n`
-    prompt += `- KESINLIKLE kendi bilgini kullanma, HICBIR SEY UYDURMA. Sadece bilgi havuzundakini soyle.\n`
-    prompt += `- KESINLIKLE su tür genel cevaplari VERME: "Mesajiniz alindi", "En kisa surede donus yapilacaktir", "Iletilecektir", "Gerekli yonlendirme yapilacaktir". Bilgin yoksa direkt "Bu konuda su an bilgim yok" de.\n`
+    prompt += `- Bilgi havuzunda konuyla ilgili bilgi VARSA onu kullan, bilgi havuzundaki kural ve yonlendirmelere uygun cevap ver.\n`
+    prompt += `- Bilgi havuzunda cevap yoksa KENDI profesyonel ve nazik tarzinla cevap ver, kisa ve yardimci ol. "Bu konuda su an bilgim yok" gibi kalip cevaplar KULLANMA.\n`
+    prompt += `- KESINLIKLE kendi bilgini uydurma, bilgi havuzundaki bilgileri ve isletme ayarlarini kullan.\n`
+    prompt += `- KESINLIKLE su tür genel cevaplari VERME: "Mesajiniz alindi", "En kisa surede donus yapilacaktir", "Iletilecektir", "Gerekli yonlendirme yapilacaktir".\n`
     prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
     prompt += `- YETENEKLERIN: Siparis alabilir, randevu olusturabilir, rezervasyon yapabilir ve iptal edebilirsin.\n`
     prompt += `- SIPARIS: Kullanici siparis vermek istedigi anda "Siparisinizi aldim" de ve onayla.\n`
