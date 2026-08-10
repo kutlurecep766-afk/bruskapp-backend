@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Param, Body, Query, Req, Logger, BadRequestException, ForbiddenException } from '@nestjs/common'
+import { Controller, Get, Post, Param, Body, Query, Req, Res, Logger, BadRequestException, ForbiddenException } from '@nestjs/common'
 import { SkipThrottle } from '@nestjs/throttler'
 import { InjectQueue } from '@nestjs/bullmq'
 import { Queue } from 'bullmq'
+import { Response } from 'express'
 import { Public } from '../auth/public.decorator'
 import { OrdersService } from './orders.service'
 import { PrismaService } from '../prisma.service'
@@ -68,6 +69,32 @@ export class OrdersController {
 
     this.logger.log('Yeni siparis: ' + order.id + ' - ' + body.customerName + ' (' + body.platform + ')')
     return order
+  }
+
+  @Public()
+  @Get('events')
+  async events(@Query('tenantId') tenantId: string, @Res() res: Response) {
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.setHeader('X-Accel-Buffering', 'no')
+    res.flushHeaders()
+
+    res.write(`retry: 3000\n\n`)
+
+    const sub = this.ordersService.orderEvents.subscribe((evt) => {
+      if (tenantId && evt.order.tenantId !== tenantId) return
+      res.write(`event: ${evt.type}\ndata: ${JSON.stringify(evt.order)}\n\n`)
+    })
+
+    const heartbeat = setInterval(() => {
+      try { res.write(': ping\n\n') } catch {}
+    }, 25000)
+
+    res.on('close', () => {
+      clearInterval(heartbeat)
+      sub.unsubscribe()
+    })
   }
 
   @Public()
