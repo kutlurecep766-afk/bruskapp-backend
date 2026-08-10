@@ -44,7 +44,7 @@ export class OrdersController {
       throw new BadRequestException('Musteri adi zorunludur')
     }
 
-    if (body.tableNumber && body.platform === 'Masa') {
+    if (body.tableNumber && (body.platform === 'Masa' || body.platform === 'Garson Çağrı')) {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: body.tenantId }, select: { storefrontConfig: true } })
       if (tenant?.storefrontConfig) {
         const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : tenant.storefrontConfig
@@ -61,7 +61,7 @@ export class OrdersController {
       waiterId: body.waiterId ?? null,
     })
 
-    if (body.customerName !== 'Test') {
+    if (body.customerName !== 'Test' && body.platform !== 'Garson Çağrı') {
       this.orderQueue.add('send-invoice', body).catch(e => this.logger.warn('Queue invoice hatasi: ' + e.message))
       this.orderQueue.add('send-notification', body).catch(e => this.logger.warn('Queue notification hatasi: ' + e.message))
     }
