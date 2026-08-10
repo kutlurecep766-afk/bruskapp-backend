@@ -20,6 +20,11 @@ export class StorefrontService {
       masaNumbers: cfg.masaNumbers || [],
       googleReviewUrl: cfg.googleReviewUrl || '',
       instagramUrl: cfg.instagramUrl || '',
+      shopName: cfg.shopName || '',
+      address: cfg.address || '',
+      phone: cfg.phone || '',
+      workingHours: cfg.workingHours || [],
+      paymentMethods: cfg.paymentMethods || [],
     }
   }
 
@@ -58,7 +63,7 @@ export class StorefrontService {
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, products } } })
   }
 
-  async updateConfig(tenantId: string, config: { masaNumbers?: number[]; bannerUrl?: string; googleReviewUrl?: string; instagramUrl?: string }) {
+  async updateConfig(tenantId: string, config: { masaNumbers?: number[]; bannerUrl?: string; googleReviewUrl?: string; instagramUrl?: string; shopName?: string; address?: string; phone?: string; workingHours?: string[]; paymentMethods?: string[] }) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
@@ -85,6 +90,11 @@ export class StorefrontService {
       masaNumbers: cfg.masaNumbers || [],
       googleReviewUrl: cfg.googleReviewUrl || '',
       instagramUrl: cfg.instagramUrl || '',
+      shopName: cfg.shopName || '',
+      address: cfg.address || '',
+      phone: cfg.phone || '',
+      workingHours: cfg.workingHours || [],
+      paymentMethods: cfg.paymentMethods || [],
     }
   }
 }
