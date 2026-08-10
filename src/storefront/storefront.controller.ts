@@ -20,7 +20,7 @@ export class StorefrontController {
   }
 
   @Put('admin/me/config')
-  async updateMyConfig(@Req() req: any, @Body() body: { masaNumbers?: number[]; bannerUrl?: string }) {
+  async updateMyConfig(@Req() req: any, @Body() body: { masaNumbers?: number[]; bannerUrl?: string; googleReviewUrl?: string; instagramUrl?: string }) {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Isletmeniz bulunmuyor')
     await this.service.updateConfig(tenantId, body)
@@ -50,7 +50,7 @@ export class StorefrontController {
   }
 
   @Post('admin/:tenantId/products')
-  async addProduct(@Req() req: any, @Param('tenantId') tenantId: string, @Body() body: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string; originalPrice?: number }) {
+  async addProduct(@Req() req: any, @Param('tenantId') tenantId: string, @Body() body: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string; originalPrice?: number; status?: string }) {
     this.checkAccess(req, tenantId)
     return this.service.addProduct(tenantId, body)
   }
@@ -69,7 +69,7 @@ export class StorefrontController {
   }
 
   @Put('admin/:tenantId/config')
-  async updateConfig(@Req() req: any, @Param('tenantId') tenantId: string, @Body() body: { masaNumbers?: number[]; bannerUrl?: string }) {
+  async updateConfig(@Req() req: any, @Param('tenantId') tenantId: string, @Body() body: { masaNumbers?: number[]; bannerUrl?: string; googleReviewUrl?: string; instagramUrl?: string }) {
     this.checkAccess(req, tenantId)
     await this.service.updateConfig(tenantId, body)
     return { success: true }

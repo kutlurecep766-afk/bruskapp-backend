@@ -18,6 +18,8 @@ export class StorefrontService {
       bannerUrl: cfg.bannerUrl || '',
       products: cfg.products || [],
       masaNumbers: cfg.masaNumbers || [],
+      googleReviewUrl: cfg.googleReviewUrl || '',
+      instagramUrl: cfg.instagramUrl || '',
     }
   }
 
@@ -28,22 +30,22 @@ export class StorefrontService {
     return cfg.products || []
   }
 
-  async addProduct(tenantId: string, product: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string; originalPrice?: number }) {
+  async addProduct(tenantId: string, product: { name: string; price: number; description?: string; image?: string; category?: string; weight?: string; originalPrice?: number; status?: string }) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
     const products = cfg.products || []
-    const newProduct = { ...product, id: crypto.randomUUID(), price: Number(product.price) }
+    const newProduct = { ...product, id: crypto.randomUUID(), price: Number(product.price), status: product.status || 'active' }
     products.push(newProduct)
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, products } } })
     return newProduct
   }
 
-  async updateProduct(tenantId: string, productId: string, data: Partial<{ name: string; price: number; description: string; image: string; category: string; weight: string; originalPrice: number }>) {
+  async updateProduct(tenantId: string, productId: string, data: Partial<{ name: string; price: number; description: string; image: string; category: string; weight: string; originalPrice: number; status: string }>) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
-    const products = (cfg.products || []).map((p: any) => p.id === productId ? { ...p, ...data, price: data.price !== undefined ? Number(data.price) : p.price } : p)
+    const products = (cfg.products || []).map((p: any) => p.id === productId ? { ...p, ...data, price: data.price !== undefined ? Number(data.price) : p.price, status: data.status || p.status || 'active' } : p)
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, products } } })
     return products.find((p: any) => p.id === productId)
   }
@@ -56,7 +58,7 @@ export class StorefrontService {
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, products } } })
   }
 
-  async updateConfig(tenantId: string, config: { masaNumbers?: number[]; bannerUrl?: string }) {
+  async updateConfig(tenantId: string, config: { masaNumbers?: number[]; bannerUrl?: string; googleReviewUrl?: string; instagramUrl?: string }) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
@@ -81,6 +83,8 @@ export class StorefrontService {
       bannerUrl: cfg.bannerUrl || '',
       products: cfg.products || [],
       masaNumbers: cfg.masaNumbers || [],
+      googleReviewUrl: cfg.googleReviewUrl || '',
+      instagramUrl: cfg.instagramUrl || '',
     }
   }
 }
