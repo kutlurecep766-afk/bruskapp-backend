@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common'
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
 import { Subject } from 'rxjs'
 import { PrismaService } from '../prisma.service'
 
@@ -112,6 +112,22 @@ export class OrdersService {
   async updateStatus(id: number, status: string, tenantId: string, customerNote?: string) {
     const order = await this.prisma.order.findFirst({ where: { id, tenantId } })
     if (!order) throw new NotFoundException('Sipariş bulunamadı')
+
+    const TERMINAL = ['delivered', 'completed', 'cancelled']
+    const terminal = order.status
+    if (TERMINAL.includes(terminal)) {
+      const sameStatus = status === terminal
+      if (sameStatus && customerNote !== undefined) {
+        const updated = await this.prisma.order.update({
+          where: { id },
+          data: { customerNote },
+        })
+        this.orderEvents.next({ type: 'status_update', order: updated })
+        return updated
+      }
+      throw new BadRequestException(`Sipariş ${terminal} durumunda, daha fazla güncelleme yapılamaz`)
+    }
+
     const updated = await this.prisma.order.update({
       where: { id },
       data: { status, ...(customerNote !== undefined ? { customerNote } : {}) },
