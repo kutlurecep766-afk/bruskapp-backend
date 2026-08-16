@@ -132,6 +132,7 @@ model Order {
   currency        String   @default("TRY")
   status          String   @default("pending")
   note            String?
+  customerNote    String?
   tableNumber     Int?
   waiterId        String?
   createdAt       DateTime @default(now())

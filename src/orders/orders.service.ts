@@ -102,6 +102,7 @@ export class OrdersService {
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       note: order.note,
+      customerNote: order.customerNote,
       businessName: tenant?.siteTitle || tenant?.name || 'İşletme',
       logoUrl: tenant?.logoUrl || '',
       primaryColor: tenant?.primaryColor || '#2563eb',
@@ -113,7 +114,7 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Sipariş bulunamadı')
     const updated = await this.prisma.order.update({
       where: { id },
-      data: { status, ...(customerNote !== undefined ? { note: customerNote } : {}) },
+      data: { status, ...(customerNote !== undefined ? { customerNote } : {}) },
     })
     this.orderEvents.next({ type: 'status_update', order: updated })
     return updated
