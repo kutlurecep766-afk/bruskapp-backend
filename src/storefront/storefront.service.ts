@@ -9,6 +9,8 @@ export class StorefrontService {
     const tenant = await this.prisma.tenant.findUnique({ where: { slug } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
+    const apiKeys = (tenant?.apiKeys as any) || {}
+    const posConfigured = !!(apiKeys.paytr?.merchantId || apiKeys.iyzico?.apiKey || apiKeys.sipay?.clientCode || apiKeys.odeal?.appId)
     return {
       id: tenant.id,
       name: tenant.siteTitle || tenant.name,
@@ -26,6 +28,7 @@ export class StorefrontService {
       locationUrl: cfg.locationUrl || '',
       workingHours: cfg.workingHours || [],
       paymentMethods: cfg.paymentMethods || [],
+      posConfigured,
     }
   }
 
