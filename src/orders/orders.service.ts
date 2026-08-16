@@ -89,8 +89,9 @@ export class OrdersService {
     if (!order) return null
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: order.tenantId },
-      select: { name: true, siteTitle: true, logoUrl: true, primaryColor: true },
+      select: { name: true, siteTitle: true, logoUrl: true, primaryColor: true, secondaryColor: true, storefrontConfig: true },
     })
+    const cfg = tenant ? (typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})) : {}
     return {
       id: order.id,
       trackingCode: order.trackingCode,
@@ -103,9 +104,10 @@ export class OrdersService {
       updatedAt: order.updatedAt,
       note: order.note,
       customerNote: order.customerNote,
-      businessName: tenant?.siteTitle || tenant?.name || 'İşletme',
+      businessName: tenant ? (cfg.shopName || tenant.siteTitle || tenant.name) : 'İşletme',
       logoUrl: tenant?.logoUrl || '',
       primaryColor: tenant?.primaryColor || '#2563eb',
+      secondaryColor: tenant?.secondaryColor || '#1d4ed8',
     }
   }
 
