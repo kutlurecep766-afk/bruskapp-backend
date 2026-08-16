@@ -124,6 +124,7 @@ model Order {
   id              Int      @id @default(autoincrement())
   tenantId        String
   platform        String
+  trackingCode    String?  @unique
   customerName    String
   customerContact String?
   products        Json
