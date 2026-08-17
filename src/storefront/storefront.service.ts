@@ -14,6 +14,8 @@ export class StorefrontService {
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
     const apiKeys = (tenant?.apiKeys as any) || {}
     const posConfigured = !!(apiKeys.paytr?.merchantId || apiKeys.iyzico?.apiKey || apiKeys.sipay?.clientCode || apiKeys.odeal?.appId)
+    const savedTable = Array.isArray(cfg.paymentMethodsTable) ? cfg.paymentMethodsTable.filter((m: string) => TABLE_PAYMENTS.includes(m)) : []
+    const savedOnline = Array.isArray(cfg.paymentMethodsOnline) ? cfg.paymentMethodsOnline.filter((m: string) => ONLINE_PAYMENTS.includes(m)) : []
     return {
       id: tenant.id,
       name: tenant.siteTitle || tenant.name,
@@ -30,8 +32,8 @@ export class StorefrontService {
       phone: cfg.phone || '',
       locationUrl: cfg.locationUrl || '',
       workingHours: cfg.workingHours || [],
-      paymentMethodsTable: TABLE_PAYMENTS,
-      paymentMethodsOnline: ONLINE_PAYMENTS,
+      paymentMethodsTable: savedTable.length ? savedTable : TABLE_PAYMENTS,
+      paymentMethodsOnline: savedOnline.length ? savedOnline : ONLINE_PAYMENTS,
       posConfigured,
     }
   }
@@ -86,6 +88,8 @@ export class StorefrontService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
+    const savedTable = Array.isArray(cfg.paymentMethodsTable) ? cfg.paymentMethodsTable.filter((m: string) => TABLE_PAYMENTS.includes(m)) : []
+    const savedOnline = Array.isArray(cfg.paymentMethodsOnline) ? cfg.paymentMethodsOnline.filter((m: string) => ONLINE_PAYMENTS.includes(m)) : []
     return {
       id: tenant.id,
       name: tenant.siteTitle || tenant.name,
@@ -103,8 +107,8 @@ export class StorefrontService {
       phone: cfg.phone || '',
       locationUrl: cfg.locationUrl || '',
       workingHours: cfg.workingHours || [],
-      paymentMethodsTable: TABLE_PAYMENTS,
-      paymentMethodsOnline: ONLINE_PAYMENTS,
+      paymentMethodsTable: savedTable.length ? savedTable : TABLE_PAYMENTS,
+      paymentMethodsOnline: savedOnline.length ? savedOnline : ONLINE_PAYMENTS,
     }
   }
 }
