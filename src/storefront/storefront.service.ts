@@ -27,6 +27,8 @@ export class StorefrontService {
       phone: cfg.phone || '',
       locationUrl: cfg.locationUrl || '',
       workingHours: cfg.workingHours || [],
+      paymentMethodsTable: cfg.paymentMethodsTable || (cfg.paymentMethods?.length ? cfg.paymentMethods : ['Kasada Nakit', 'Kasada Kart', 'Online Ödeme']),
+      paymentMethodsOnline: cfg.paymentMethodsOnline || (cfg.paymentMethods?.length ? cfg.paymentMethods : ['Kapıda Nakit', 'Kapıda Kart', 'Online Ödeme']),
       paymentMethods: cfg.paymentMethods || [],
       posConfigured,
     }
@@ -67,7 +69,7 @@ export class StorefrontService {
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, products } } })
   }
 
-  async updateConfig(tenantId: string, config: { masaNumbers?: number[]; bannerUrl?: string; googleReviewUrl?: string; instagramUrl?: string; shopName?: string; address?: string; phone?: string; locationUrl?: string; workingHours?: string[]; paymentMethods?: string[] }) {
+  async updateConfig(tenantId: string, config: { masaNumbers?: number[]; bannerUrl?: string; googleReviewUrl?: string; instagramUrl?: string; shopName?: string; address?: string; phone?: string; locationUrl?: string; workingHours?: string[]; paymentMethods?: string[]; paymentMethodsTable?: string[]; paymentMethodsOnline?: string[] }) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
@@ -99,6 +101,8 @@ export class StorefrontService {
       phone: cfg.phone || '',
       locationUrl: cfg.locationUrl || '',
       workingHours: cfg.workingHours || [],
+      paymentMethodsTable: cfg.paymentMethodsTable || (cfg.paymentMethods?.length ? cfg.paymentMethods : ['Kasada Nakit', 'Kasada Kart', 'Online Ödeme']),
+      paymentMethodsOnline: cfg.paymentMethodsOnline || (cfg.paymentMethods?.length ? cfg.paymentMethods : ['Kapıda Nakit', 'Kapıda Kart', 'Online Ödeme']),
       paymentMethods: cfg.paymentMethods || [],
     }
   }
