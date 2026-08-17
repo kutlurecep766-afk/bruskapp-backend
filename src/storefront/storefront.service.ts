@@ -1,9 +1,11 @@
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { PrismaService } from '../prisma.service'
 
-const KNOWN_PAYMENT_METHODS: string[] = ['Online Ödeme', 'Kapıda Nakit', 'Kapıda Kart']
-const resolvePayments = (saved?: string[]) => {
-  const src = saved?.length ? saved : KNOWN_PAYMENT_METHODS
+const KNOWN_PAYMENT_METHODS: string[] = ['Online Ödeme', 'Kapıda Nakit', 'Kapıda Kart', 'Kasada Nakit', 'Kasada Kart']
+const DEFAULT_TABLE_PAYMENTS: string[] = ['Online Ödeme', 'Kasada Nakit', 'Kasada Kart']
+const DEFAULT_ONLINE_PAYMENTS: string[] = ['Online Ödeme', 'Kapıda Nakit', 'Kapıda Kart']
+const resolvePayments = (saved?: string[], defaults: string[] = KNOWN_PAYMENT_METHODS) => {
+  const src = saved?.length ? saved : defaults
   return src.filter((v) => KNOWN_PAYMENT_METHODS.includes(v))
 }
 
@@ -33,8 +35,8 @@ export class StorefrontService {
       phone: cfg.phone || '',
       locationUrl: cfg.locationUrl || '',
       workingHours: cfg.workingHours || [],
-      paymentMethodsTable: resolvePayments(cfg.paymentMethodsTable),
-      paymentMethodsOnline: resolvePayments(cfg.paymentMethodsOnline),
+      paymentMethodsTable: resolvePayments(cfg.paymentMethodsTable, DEFAULT_TABLE_PAYMENTS),
+      paymentMethodsOnline: resolvePayments(cfg.paymentMethodsOnline, DEFAULT_ONLINE_PAYMENTS),
       posConfigured,
     }
   }
@@ -106,8 +108,8 @@ export class StorefrontService {
       phone: cfg.phone || '',
       locationUrl: cfg.locationUrl || '',
       workingHours: cfg.workingHours || [],
-      paymentMethodsTable: resolvePayments(cfg.paymentMethodsTable),
-      paymentMethodsOnline: resolvePayments(cfg.paymentMethodsOnline),
+      paymentMethodsTable: resolvePayments(cfg.paymentMethodsTable, DEFAULT_TABLE_PAYMENTS),
+      paymentMethodsOnline: resolvePayments(cfg.paymentMethodsOnline, DEFAULT_ONLINE_PAYMENTS),
     }
   }
 }
