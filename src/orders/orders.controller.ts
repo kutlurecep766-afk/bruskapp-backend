@@ -99,11 +99,17 @@ export class OrdersController {
 
   @Public()
   @Get('tracking/:code')
-  async trackOrder(@Param('code') code: string) {
+  async trackOrder(@Param('code') code: string, @Query('slug') slug?: string) {
     if (!code || !/^\d{6}$/.test(code)) {
       throw new BadRequestException('Geçersiz sipariş kodu')
     }
-    const order = await this.ordersService.findByTrackingCode(code)
+    let tenantId: string | undefined
+    if (slug) {
+      const tenant = await this.prisma.tenant.findUnique({ where: { slug }, select: { id: true } })
+      if (!tenant) throw new NotFoundException('İşletme bulunamadı')
+      tenantId = tenant.id
+    }
+    const order = await this.ordersService.findByTrackingCode(code, tenantId)
     if (!order) throw new NotFoundException('Sipariş bulunamadı. Kodu kontrol edin veya işletmeyle iletişime geçin.')
     return order
   }

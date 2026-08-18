@@ -124,7 +124,7 @@ model Order {
   id              Int      @id @default(autoincrement())
   tenantId        String
   platform        String
-  trackingCode    String?  @unique
+  trackingCode    String?
   customerName    String
   customerContact String?
   products        Json
@@ -141,6 +141,7 @@ model Order {
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
   @@index([tenantId, waiterId])
+  @@unique([tenantId, trackingCode])
 }
 
 model Appointment {

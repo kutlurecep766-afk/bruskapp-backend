@@ -14,7 +14,7 @@ function randomCode(): string {
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name)
-  private usedCodes = new Set<number>()
+  private usedCodes = new Set<string>()
 
   public orderEvents = new Subject<OrderEvent>()
 
@@ -38,12 +38,12 @@ export class OrdersService {
     if (data.platform !== 'Garson Çağrı') {
       for (let attempt = 0; attempt < 10; attempt++) {
         const code = randomCode()
-        const num = parseInt(code)
-        if (this.usedCodes.has(num)) continue
-        const exists = await this.prisma.order.findUnique({ where: { trackingCode: code }, select: { id: true } })
+        const key = data.tenantId + ':' + code
+        if (this.usedCodes.has(key)) continue
+        const exists = await this.prisma.order.findFirst({ where: { tenantId: data.tenantId, trackingCode: code }, select: { id: true } })
         if (exists) continue
         trackingCode = code
-        this.usedCodes.add(num)
+        this.usedCodes.add(key)
         break
       }
     }
@@ -82,10 +82,10 @@ export class OrdersService {
     return this.prisma.order.findFirst({ where: { id, tenantId } })
   }
 
-  async findByTrackingCode(code: string) {
-    const order = await this.prisma.order.findUnique({
-      where: { trackingCode: code },
-    })
+  async findByTrackingCode(code: string, tenantId?: string) {
+    const order = tenantId
+      ? await this.prisma.order.findFirst({ where: { tenantId, trackingCode: code } })
+      : await this.prisma.order.findFirst({ where: { trackingCode: code } })
     if (!order) return null
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: order.tenantId },
