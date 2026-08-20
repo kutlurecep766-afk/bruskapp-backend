@@ -20,6 +20,58 @@ export class PaymentsService {
     return keys as { merchantId: string; merchantKey: string; merchantSecret: string }
   }
 
+  private async validatePaytrKeys(keys: { merchantId: string; merchantKey: string; merchantSecret: string }) {
+    if (!keys?.merchantId || !keys?.merchantKey || !keys?.merchantSecret) {
+      throw new HttpException('Merchant ID, Merchant Key ve Merchant Secret alanlarının tümü zorunludur.', HttpStatus.BAD_REQUEST)
+    }
+    const merchantId = keys.merchantId
+    const userIp = '::1'
+    const merchantOid = 'VAL-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8)
+    const amount = 100
+    const userBasket = Buffer.from(JSON.stringify([['Doğrulama', '1', 1]])).toString('base64')
+    const noInstallment = '1'
+    const maxInstallment = '0'
+    const hashStr = merchantId + userIp + merchantOid + 'dogrulama@ornek.com' + String(amount) + userBasket + noInstallment + maxInstallment + 'TL' + '1'
+    const paytrToken = crypto.createHmac('sha256', keys.merchantKey).update(hashStr + keys.merchantSecret).digest('base64')
+
+    const body = new URLSearchParams({
+      merchant_id: merchantId,
+      user_ip: userIp,
+      merchant_oid: merchantOid,
+      email: 'dogrulama@ornek.com',
+      payment_amount: String(amount),
+      paytr_token: paytrToken,
+      user_basket: userBasket,
+      no_installment: noInstallment,
+      max_installment: maxInstallment,
+      user_name: '',
+      user_address: '',
+      user_phone: '',
+      merchant_ok_url: `https://bruskapp.com/api/payments/virtual-pos/paytr/result?status=success&oid=${merchantOid}`,
+      merchant_fail_url: `https://bruskapp.com/api/payments/virtual-pos/paytr/result?status=fail&oid=${merchantOid}`,
+      currency: 'TL',
+      timeout_limit: '30',
+      debug_on: '1',
+      test_mode: '1',
+      lang: 'tr',
+    })
+
+    let response
+    try {
+      response = await firstValueFrom(
+        this.http.post('https://www.paytr.com/odeme/api/get-token', body.toString(), {
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        })
+      )
+    } catch (e: any) {
+      throw new HttpException('PayTR bağlantı hatası: ' + (e?.response?.data?.err_msg || e.message), HttpStatus.BAD_GATEWAY)
+    }
+
+    if (response.data.status !== 'success') {
+      throw new HttpException('PayTR anahtarları doğrulanamadı: ' + (response.data.err_msg || 'geçersiz anahtarlar'), HttpStatus.BAD_REQUEST)
+    }
+  }
+
   private async getIyzicoKeys(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     const keys = (tenant?.apiKeys as any)?.iyzico
@@ -194,7 +246,9 @@ export class PaymentsService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     const currentKeys = (tenant?.apiKeys as any) || {}
     if (provider == 'paytr') {
-      currentKeys.paytr = { merchantId: dto.merchantId, merchantKey: dto.merchantKey, merchantSecret: dto.merchantSecret }
+      const keys = { merchantId: dto.merchantId || '', merchantKey: dto.merchantKey || '', merchantSecret: dto.merchantSecret || '' }
+      await this.validatePaytrKeys(keys)
+      currentKeys.paytr = keys
     } else if (provider == 'iyzico') {
       currentKeys.iyzico = { apiKey: dto.apiKey || '', secretKey: dto.secretKey || '' }
     } else if (provider == 'sipay') {
@@ -633,11 +687,12 @@ export class PaymentsService {
   async getInstallmentSettings(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     const settings = (tenant?.apiKeys as any)?.installmentSettings || {}
+    const defaults = { enabled: true, maxInstallment: 12, allowedInstallments: [1, 2, 3, 6, 9, 12] }
     return {
-      paytr: settings.paytr || { enabled: true, maxInstallment: 12, allowedInstallments: [1, 2, 3, 6, 9, 12] },
-      iyzico: settings.iyzico || { enabled: true, maxInstallment: 12, allowedInstallments: [1, 2, 3, 6, 9, 12] },
-      sipay: settings.sipay || { enabled: true, maxInstallment: 12, allowedInstallments: [1, 2, 3, 6, 9, 12] },
-      odeal: settings.odeal || { enabled: true, maxInstallment: 12, allowedInstallments: [1, 2, 3, 6, 9, 12] },
+      paytr: settings.paytr || defaults,
+      iyzico: settings.iyzico || defaults,
+      sipay: settings.sipay || defaults,
+      odeal: settings.odeal || defaults,
     }
   }
 
