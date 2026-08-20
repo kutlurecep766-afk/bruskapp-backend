@@ -35,7 +35,7 @@ export class OrdersService {
     tableNumber?: number | null
     waiterId?: string | null
   }) {
-    if (data.platform !== 'Garson Çağrı' && data.customerName !== 'Test') {
+    if (data.customerName !== 'Test') {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { storefrontConfig: true } })
       const cfg = parseStoreConfig(tenant?.storefrontConfig)
       const status = effectiveStoreStatus(cfg.storeSettings, new Date(), data.tableNumber ? 'table' : 'online')
