@@ -20,7 +20,7 @@ export class StorefrontController {
   }
 
   @Put('admin/me/settings')
-  async updateMyStoreSettings(@Req() req: any, @Body() body: { status?: string; autoMode?: boolean; openTime?: string; closeTime?: string }) {
+  async updateMyStoreSettings(@Req() req: any, @Body() body: { table?: any; online?: any }) {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new ForbiddenException('Isletmeniz bulunmuyor')
     return this.service.updateStoreSettings(tenantId, body)

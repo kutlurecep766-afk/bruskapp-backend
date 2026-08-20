@@ -13,8 +13,20 @@ function timeToMins(t: string | undefined): number | null {
   return parseInt(m[1]) * 60 + parseInt(m[2])
 }
 
-export function effectiveStoreStatus(settings: any = {}, now = new Date()): 'open' | 'busy' | 'closed' {
-  const s = { ...DEFAULT_STORE_SETTINGS, ...(settings || {}) }
+export type StoreScope = 'table' | 'online'
+
+export function splitStoreSettings(settings: any = {}): { table: any; online: any } {
+  const legacy = { ...DEFAULT_STORE_SETTINGS, ...(settings || {}) }
+  if (settings && (settings.table || settings.online)) {
+    return {
+      table: { ...DEFAULT_STORE_SETTINGS, ...(settings.table || {}) },
+      online: { ...DEFAULT_STORE_SETTINGS, ...(settings.online || {}) },
+    }
+  }
+  return { table: { ...legacy }, online: { ...legacy } }
+}
+
+function computeStatus(s: any, now: Date): 'open' | 'busy' | 'closed' {
   if (s.autoMode) {
     const open = timeToMins(s.openTime)
     const close = timeToMins(s.closeTime)
@@ -28,6 +40,11 @@ export function effectiveStoreStatus(settings: any = {}, now = new Date()): 'ope
     }
   }
   return s.status === 'busy' || s.status === 'closed' ? s.status : 'open'
+}
+
+export function effectiveStoreStatus(settings: any = {}, now = new Date(), scope?: StoreScope): 'open' | 'busy' | 'closed' {
+  const scoped = splitStoreSettings(settings)
+  return computeStatus(scope === 'table' ? scoped.table : scoped.online, now)
 }
 
 export function parseStoreConfig(raw: any): any {
@@ -46,7 +63,7 @@ export class StorefrontService {
     const posConfigured = !!(apiKeys.paytr?.merchantId || apiKeys.iyzico?.apiKey || apiKeys.sipay?.clientCode || apiKeys.odeal?.appId)
     const savedTable = Array.isArray(cfg.paymentMethodsTable) ? cfg.paymentMethodsTable.filter((m: string) => TABLE_PAYMENTS.includes(m)) : []
     const savedOnline = Array.isArray(cfg.paymentMethodsOnline) ? cfg.paymentMethodsOnline.filter((m: string) => ONLINE_PAYMENTS.includes(m)) : []
-    const storeSettings = { ...DEFAULT_STORE_SETTINGS, ...(cfg.storeSettings || {}) }
+    const scoped = splitStoreSettings(cfg.storeSettings)
     return {
       id: tenant.id,
       name: tenant.siteTitle || tenant.name,
@@ -66,8 +83,9 @@ export class StorefrontService {
       paymentMethodsTable: savedTable.length ? savedTable : TABLE_PAYMENTS,
       paymentMethodsOnline: savedOnline.length ? savedOnline : ONLINE_PAYMENTS,
       posConfigured,
-      storeStatus: effectiveStoreStatus(storeSettings),
-      storeSettings,
+      storeStatus: computeStatus(scoped.online, new Date()),
+      storeStatusTable: computeStatus(scoped.table, new Date()),
+      storeSettings: scoped,
     }
   }
 
@@ -75,23 +93,34 @@ export class StorefrontService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = parseStoreConfig(tenant.storefrontConfig)
-    const settings = { ...DEFAULT_STORE_SETTINGS, ...(cfg.storeSettings || {}) }
-    return { settings, effectiveStatus: effectiveStoreStatus(settings) }
+    const scoped = splitStoreSettings(cfg.storeSettings)
+    const now = new Date()
+    return {
+      table: { settings: scoped.table, effectiveStatus: computeStatus(scoped.table, now) },
+      online: { settings: scoped.online, effectiveStatus: computeStatus(scoped.online, now) },
+    }
   }
 
-  async updateStoreSettings(tenantId: string, dto: { status?: string; autoMode?: boolean; openTime?: string; closeTime?: string }) {
+  async updateStoreSettings(tenantId: string, dto: { table?: any; online?: any }) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = parseStoreConfig(tenant.storefrontConfig)
-    const current = { ...DEFAULT_STORE_SETTINGS, ...(cfg.storeSettings || {}) }
-    const next = {
-      status: ['open', 'busy', 'closed'].includes(dto.status || '') ? dto.status : current.status,
-      autoMode: typeof dto.autoMode === 'boolean' ? dto.autoMode : current.autoMode,
-      openTime: /^\d{1,2}:\d{2}$/.test(dto.openTime || '') ? dto.openTime : current.openTime,
-      closeTime: /^\d{1,2}:\d{2}$/.test(dto.closeTime || '') ? dto.closeTime : current.closeTime,
-    }
+    const scoped = splitStoreSettings(cfg.storeSettings)
+    const pick = (input: any, fallback: any) => ({
+      status: ['open', 'busy', 'closed'].includes(input?.status || '') ? input.status : fallback.status,
+      autoMode: typeof input?.autoMode === 'boolean' ? input.autoMode : fallback.autoMode,
+      openTime: /^\d{1,2}:\d{2}$/.test(input?.openTime || '') ? input.openTime : fallback.openTime,
+      closeTime: /^\d{1,2}:\d{2}$/.test(input?.closeTime || '') ? input.closeTime : fallback.closeTime,
+    })
+    const table = pick(dto?.table, scoped.table)
+    const online = pick(dto?.online, scoped.online)
+    const next = { table, online }
     await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, storeSettings: next } } })
-    return { settings: next, effectiveStatus: effectiveStoreStatus(next) }
+    const now = new Date()
+    return {
+      table: { settings: table, effectiveStatus: computeStatus(table, now) },
+      online: { settings: online, effectiveStatus: computeStatus(online, now) },
+    }
   }
 
   async getProducts(tenantId: string) {

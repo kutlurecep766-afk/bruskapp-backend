@@ -38,9 +38,10 @@ export class OrdersService {
     if (data.platform !== 'Garson Çağrı' && data.customerName !== 'Test') {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { storefrontConfig: true } })
       const cfg = parseStoreConfig(tenant?.storefrontConfig)
-      const status = effectiveStoreStatus(cfg.storeSettings)
+      const status = effectiveStoreStatus(cfg.storeSettings, new Date(), data.tableNumber ? 'table' : 'online')
       if (status !== 'open') {
-        throw new BadRequestException(status === 'closed' ? 'Mağaza şu anda kapalı, sipariş alınamıyor.' : 'Mağaza şu anda yoğun, siparişlere ara verildi.')
+        if (status === 'busy') throw new BadRequestException('Şu anda yoğunluktan dolayı sipariş alınamamaktadır. En kısa sürede aktif olacaktır.')
+        throw new BadRequestException('Şu anda sipariş alınamamaktadır. En kısa sürede aktif olacaktır.')
       }
     }
 
