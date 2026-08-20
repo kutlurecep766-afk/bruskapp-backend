@@ -4,6 +4,36 @@ import { PrismaService } from '../prisma.service'
 const TABLE_PAYMENTS: string[] = ['Online Ödeme', 'Kasada Kart', 'Kasada Nakit']
 const ONLINE_PAYMENTS: string[] = ['Online Ödeme', 'Kapıda Kart', 'Kapıda Nakit']
 
+const DEFAULT_STORE_SETTINGS = { status: 'open', autoMode: false, openTime: '09:00', closeTime: '23:00' }
+
+function timeToMins(t: string | undefined): number | null {
+  if (!t) return null
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim())
+  if (!m) return null
+  return parseInt(m[1]) * 60 + parseInt(m[2])
+}
+
+export function effectiveStoreStatus(settings: any = {}, now = new Date()): 'open' | 'busy' | 'closed' {
+  const s = { ...DEFAULT_STORE_SETTINGS, ...(settings || {}) }
+  if (s.autoMode) {
+    const open = timeToMins(s.openTime)
+    const close = timeToMins(s.closeTime)
+    if (open !== null && close !== null) {
+      const cur = now.getHours() * 60 + now.getMinutes()
+      let inHours
+      if (open === close) inHours = true
+      else if (open < close) inHours = cur >= open && cur < close
+      else inHours = cur >= open || cur < close
+      return inHours ? 'open' : 'closed'
+    }
+  }
+  return s.status === 'busy' || s.status === 'closed' ? s.status : 'open'
+}
+
+export function parseStoreConfig(raw: any): any {
+  return typeof raw === 'string' ? JSON.parse(raw) : (raw || {})
+}
+
 @Injectable()
 export class StorefrontService {
   constructor(private prisma: PrismaService) {}
@@ -11,11 +41,12 @@ export class StorefrontService {
   async getMenu(slug: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { slug } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
-    const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
+    const cfg = parseStoreConfig(tenant.storefrontConfig)
     const apiKeys = (tenant?.apiKeys as any) || {}
     const posConfigured = !!(apiKeys.paytr?.merchantId || apiKeys.iyzico?.apiKey || apiKeys.sipay?.clientCode || apiKeys.odeal?.appId)
     const savedTable = Array.isArray(cfg.paymentMethodsTable) ? cfg.paymentMethodsTable.filter((m: string) => TABLE_PAYMENTS.includes(m)) : []
     const savedOnline = Array.isArray(cfg.paymentMethodsOnline) ? cfg.paymentMethodsOnline.filter((m: string) => ONLINE_PAYMENTS.includes(m)) : []
+    const storeSettings = { ...DEFAULT_STORE_SETTINGS, ...(cfg.storeSettings || {}) }
     return {
       id: tenant.id,
       name: tenant.siteTitle || tenant.name,
@@ -35,7 +66,32 @@ export class StorefrontService {
       paymentMethodsTable: savedTable.length ? savedTable : TABLE_PAYMENTS,
       paymentMethodsOnline: savedOnline.length ? savedOnline : ONLINE_PAYMENTS,
       posConfigured,
+      storeStatus: effectiveStoreStatus(storeSettings),
+      storeSettings,
     }
+  }
+
+  async getStoreSettings(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
+    if (!tenant) throw new NotFoundException('Isletme bulunamadi')
+    const cfg = parseStoreConfig(tenant.storefrontConfig)
+    const settings = { ...DEFAULT_STORE_SETTINGS, ...(cfg.storeSettings || {}) }
+    return { settings, effectiveStatus: effectiveStoreStatus(settings) }
+  }
+
+  async updateStoreSettings(tenantId: string, dto: { status?: string; autoMode?: boolean; openTime?: string; closeTime?: string }) {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
+    if (!tenant) throw new NotFoundException('Isletme bulunamadi')
+    const cfg = parseStoreConfig(tenant.storefrontConfig)
+    const current = { ...DEFAULT_STORE_SETTINGS, ...(cfg.storeSettings || {}) }
+    const next = {
+      status: ['open', 'busy', 'closed'].includes(dto.status || '') ? dto.status : current.status,
+      autoMode: typeof dto.autoMode === 'boolean' ? dto.autoMode : current.autoMode,
+      openTime: /^\d{1,2}:\d{2}$/.test(dto.openTime || '') ? dto.openTime : current.openTime,
+      closeTime: /^\d{1,2}:\d{2}$/.test(dto.closeTime || '') ? dto.closeTime : current.closeTime,
+    }
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, storeSettings: next } } })
+    return { settings: next, effectiveStatus: effectiveStoreStatus(next) }
   }
 
   async getProducts(tenantId: string) {

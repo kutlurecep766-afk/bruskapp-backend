@@ -1,6 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common'
 import { Subject } from 'rxjs'
 import { PrismaService } from '../prisma.service'
+import { effectiveStoreStatus, parseStoreConfig } from '../storefront/storefront.service'
 
 export interface OrderEvent {
   type: 'new_order' | 'status_update'
@@ -34,6 +35,15 @@ export class OrdersService {
     tableNumber?: number | null
     waiterId?: string | null
   }) {
+    if (data.platform !== 'Garson Çağrı' && data.customerName !== 'Test') {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { storefrontConfig: true } })
+      const cfg = parseStoreConfig(tenant?.storefrontConfig)
+      const status = effectiveStoreStatus(cfg.storeSettings)
+      if (status !== 'open') {
+        throw new BadRequestException(status === 'closed' ? 'Mağaza şu anda kapalı, sipariş alınamıyor.' : 'Mağaza şu anda yoğun, siparişlere ara verildi.')
+      }
+    }
+
     let trackingCode: string | null = null
     if (data.platform !== 'Garson Çağrı') {
       for (let attempt = 0; attempt < 10; attempt++) {

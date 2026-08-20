@@ -12,6 +12,20 @@ export class StorefrontController {
     return this.service.getMenu(slug)
   }
 
+  @Get('admin/me/settings')
+  async getMyStoreSettings(@Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('Isletmeniz bulunmuyor')
+    return this.service.getStoreSettings(tenantId)
+  }
+
+  @Put('admin/me/settings')
+  async updateMyStoreSettings(@Req() req: any, @Body() body: { status?: string; autoMode?: boolean; openTime?: string; closeTime?: string }) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new ForbiddenException('Isletmeniz bulunmuyor')
+    return this.service.updateStoreSettings(tenantId, body)
+  }
+
   @Get('admin/me')
   async getMyStorefront(@Req() req: any) {
     const tenantId = req.user?.tenantId
