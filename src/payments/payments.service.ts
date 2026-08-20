@@ -25,7 +25,7 @@ export class PaymentsService {
       throw new HttpException('Merchant ID, Merchant Key ve Merchant Secret alanlarının tümü zorunludur.', HttpStatus.BAD_REQUEST)
     }
     const merchantId = keys.merchantId
-    const userIp = '::1'
+    const userIp = '94.54.94.74'
     const merchantOid = 'VAL-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8)
     const amount = 100
     const userBasket = Buffer.from(JSON.stringify([['Doğrulama', '1', 1]])).toString('base64')
@@ -163,6 +163,10 @@ export class PaymentsService {
 
     if (hash !== expectedHash) {
       throw new HttpException('Geçersiz imza', HttpStatus.FORBIDDEN)
+    }
+
+    if (tx.status === 'success' || tx.status === 'failed') {
+      return { status: tx.status, merchantOid: merchant_oid }
     }
 
     await this.prisma.paymentTransaction.update({

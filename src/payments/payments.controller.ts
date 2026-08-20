@@ -15,8 +15,10 @@ export class PaymentsController {
 
   @Public()
   @Post('virtual-pos/paytr/callback')
-  async handleCallback(@Body() body: any) {
-    return this.paymentsService.handleCallback(body)
+  @Header('Content-Type', 'text/plain; charset=utf-8')
+  async handleCallback(@Body() body: any): Promise<string> {
+    await this.paymentsService.handleCallback(body)
+    return 'OK'
   }
 
   @Public()
