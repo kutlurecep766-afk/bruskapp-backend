@@ -263,6 +263,20 @@ export class PaymentsService {
     })
   }
 
+  async disconnectProvider(tenantId: string, provider: string = 'paytr') {
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
+    const currentKeys = (tenant?.apiKeys as any) || {}
+    delete currentKeys[provider]
+    if (currentKeys.installmentSettings) {
+      delete currentKeys.installmentSettings[provider]
+    }
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { apiKeys: currentKeys },
+    })
+    return { success: true }
+  }
+
   async getApiKeysStatus(tenantId: string) {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } })
     const allKeys = (tenant?.apiKeys as any) || {}

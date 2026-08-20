@@ -49,6 +49,11 @@ export class PaymentsController {
     return this.paymentsService.getApiKeysStatus(req.user.tenantId)
   }
 
+  @Post('virtual-pos/disconnect')
+  async disconnectProvider(@Body() dto: { provider?: string }, @Req() req: any) {
+    return this.paymentsService.disconnectProvider(req.user.tenantId, dto.provider || 'paytr')
+  }
+
   // Legal info
   @Post('virtual-pos/legal-info')
   async updateLegalInfo(@Body() dto: any, @Req() req: any) {
