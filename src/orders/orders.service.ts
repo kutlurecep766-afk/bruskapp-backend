@@ -115,6 +115,8 @@ export class OrdersService {
       updatedAt: order.updatedAt,
       note: order.note,
       customerNote: order.customerNote,
+      customerName: order.customerName,
+      customerContact: order.customerContact,
       businessName: tenant ? (cfg.shopName || tenant.siteTitle || tenant.name) : 'İşletme',
       logoUrl: tenant?.logoUrl || '',
       primaryColor: tenant?.primaryColor || '#2563eb',
