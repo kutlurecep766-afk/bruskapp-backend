@@ -135,6 +135,8 @@ model Order {
   customerNote    String?
   tableNumber     Int?
   waiterId        String?
+  deviceId        String?
+  ipAddress       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -142,6 +144,18 @@ model Order {
   @@index([tenantId, status])
   @@index([tenantId, waiterId])
   @@unique([tenantId, trackingCode])
+}
+
+model BlockedDevice {
+  id        Int      @id @default(autoincrement())
+  tenantId  String
+  deviceId  String
+  ipAddress String?
+  reason    String?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, deviceId])
+  @@index([tenantId, ipAddress])
 }
 
 model Appointment {

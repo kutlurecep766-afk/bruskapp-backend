@@ -34,6 +34,8 @@ export class OrdersService {
     note?: string
     tableNumber?: number | null
     waiterId?: string | null
+    deviceId?: string | null
+    ipAddress?: string | null
   }) {
     if (data.customerName !== 'Test') {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: data.tenantId }, select: { storefrontConfig: true } })
@@ -42,6 +44,22 @@ export class OrdersService {
       if (status !== 'open') {
         if (status === 'busy') throw new BadRequestException('Şu anda yoğunluktan dolayı sipariş alınamamaktadır. En kısa sürede aktif olacaktır.')
         throw new BadRequestException('Şu anda sipariş alınamamaktadır. En kısa sürede aktif olacaktır.')
+      }
+
+      if (data.deviceId || data.ipAddress) {
+        const blocked = await this.prisma.blockedDevice.findFirst({
+          where: {
+            tenantId: data.tenantId,
+            OR: [
+              ...(data.deviceId ? [{ deviceId: data.deviceId }] : []),
+              ...(data.ipAddress ? [{ ipAddress: data.ipAddress }] : []),
+            ],
+          },
+          select: { id: true },
+        })
+        if (blocked) {
+          throw new BadRequestException('Bu cihazdan şu anda sipariş alınamamaktadır. İşletmeyle iletişime geçin.')
+        }
       }
     }
 
@@ -73,6 +91,8 @@ export class OrdersService {
         note: data.note || '',
         tableNumber: data.tableNumber || null,
         waiterId: data.waiterId || null,
+        deviceId: data.deviceId || null,
+        ipAddress: data.ipAddress || null,
       },
     })
 
@@ -149,5 +169,37 @@ export class OrdersService {
     })
     this.orderEvents.next({ type: 'status_update', order: updated })
     return updated
+  }
+
+  async blockOrder(id: number, tenantId: string, reason?: string) {
+    const order = await this.prisma.order.findFirst({ where: { id, tenantId } })
+    if (!order) throw new NotFoundException('Sipariş bulunamadı')
+    if (!order.deviceId && !order.ipAddress) {
+      throw new BadRequestException('Bu siparişte engellenebilir cihaz/IP bilgisi yok')
+    }
+    const blocked = await this.prisma.blockedDevice.create({
+      data: {
+        tenantId,
+        deviceId: order.deviceId || 'unknown',
+        ipAddress: order.ipAddress || null,
+        reason: reason || ('Sipariş #' + order.id + ' engellendi'),
+      },
+    })
+    return blocked
+  }
+
+  async unblockOrder(id: number, tenantId: string) {
+    const blocked = await this.prisma.blockedDevice.findFirst({ where: { id, tenantId } })
+    if (!blocked) throw new NotFoundException('Engel bulunamadı')
+    await this.prisma.blockedDevice.delete({ where: { id } })
+    return { ok: true }
+  }
+
+  async listBlocked(tenantId: string) {
+    return this.prisma.blockedDevice.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
   }
 }

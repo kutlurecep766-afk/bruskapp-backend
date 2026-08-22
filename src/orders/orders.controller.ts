@@ -31,13 +31,14 @@ export class OrdersController {
     note?: string
     tableNumber?: number | null
     waiterId?: string | null
+    deviceId?: string
     customerVkn?: string
     customerTckn?: string
     customerEmail?: string
     customerPhone?: string
     customerAddress?: string
     customerTaxOffice?: string
-  }) {
+  }, @Req() req: any) {
     if (!body.tenantId) {
       throw new BadRequestException('tenantId alani zorunludur')
     }
@@ -56,10 +57,14 @@ export class OrdersController {
       }
     }
 
+    const ip = (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() || req.ip || null
+
     const order = await this.ordersService.create({
       ...body,
       tableNumber: body.tableNumber ?? null,
       waiterId: body.waiterId ?? null,
+      deviceId: body.deviceId || null,
+      ipAddress: ip,
     })
 
     if (body.customerName !== 'Test' && body.platform !== 'Garson Çağrı') {
@@ -120,11 +125,32 @@ export class OrdersController {
     return this.ordersService.findAll(tenantId || 'default', limit ? parseInt(limit) : 50)
   }
 
+  @Get('blocked')
+  async listBlocked(@Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.ordersService.listBlocked(tenantId)
+  }
+
   @Get(':id')
   async findById(@Param('id') id: string, @Req() req: any) {
     const tenantId = req.user?.tenantId
     if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
     return this.ordersService.findById(parseInt(id), tenantId)
+  }
+
+  @Post(':id/block')
+  async blockOrder(@Param('id') id: string, @Body() body: { reason?: string }, @Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.ordersService.blockOrder(parseInt(id), tenantId, body.reason)
+  }
+
+  @Post(':id/unblock')
+  async unblockOrder(@Param('id') id: string, @Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.ordersService.unblockOrder(parseInt(id), tenantId)
   }
 
   @Post(':id/status')
