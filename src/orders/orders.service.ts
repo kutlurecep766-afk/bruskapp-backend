@@ -46,15 +46,9 @@ export class OrdersService {
         throw new BadRequestException('Şu anda sipariş alınamamaktadır. En kısa sürede aktif olacaktır.')
       }
 
-      if (data.deviceId || data.ipAddress) {
+      if (data.deviceId) {
         const blocked = await this.prisma.blockedDevice.findFirst({
-          where: {
-            tenantId: data.tenantId,
-            OR: [
-              ...(data.deviceId ? [{ deviceId: data.deviceId }] : []),
-              ...(data.ipAddress ? [{ ipAddress: data.ipAddress }] : []),
-            ],
-          },
+          where: { tenantId: data.tenantId, deviceId: data.deviceId },
           select: { id: true },
         })
         if (blocked) {
@@ -174,14 +168,14 @@ export class OrdersService {
   async blockOrder(id: number, tenantId: string, reason?: string) {
     const order = await this.prisma.order.findFirst({ where: { id, tenantId } })
     if (!order) throw new NotFoundException('Sipariş bulunamadı')
-    if (!order.deviceId && !order.ipAddress) {
-      throw new BadRequestException('Bu siparişte engellenebilir cihaz/IP bilgisi yok')
+    if (!order.deviceId) {
+      throw new BadRequestException('Bu siparişte engellenebilir cihaz kimliği yok')
     }
     const blocked = await this.prisma.blockedDevice.create({
       data: {
         tenantId,
-        deviceId: order.deviceId || 'unknown',
-        ipAddress: order.ipAddress || null,
+        deviceId: order.deviceId,
+        ipAddress: null,
         reason: reason || ('Sipariş #' + order.id + ' engellendi'),
       },
     })
