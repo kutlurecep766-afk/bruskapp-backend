@@ -95,9 +95,15 @@ export class OrdersService {
     return order
   }
 
-  async findAll(tenantId: string, limit = 50) {
+  async findAll(tenantId: string, limit = 50, from?: string, to?: string) {
+    const where: any = { tenantId }
+    if (from || to) {
+      where.createdAt = {}
+      if (from) where.createdAt.gte = new Date(from)
+      if (to) where.createdAt.lte = new Date(to)
+    }
     return this.prisma.order.findMany({
-      where: { tenantId },
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit,
     })

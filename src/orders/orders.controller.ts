@@ -121,8 +121,8 @@ export class OrdersController {
 
   @Public()
   @Get()
-  async findAll(@Query('tenantId') tenantId: string, @Query('limit') limit?: string) {
-    return this.ordersService.findAll(tenantId || 'default', limit ? parseInt(limit) : 50)
+  async findAll(@Query('tenantId') tenantId: string, @Query('limit') limit?: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.ordersService.findAll(tenantId || 'default', limit ? parseInt(limit) : 50, from, to)
   }
 
   @Get('blocked')
