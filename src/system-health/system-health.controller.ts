@@ -100,4 +100,45 @@ export class SystemHealthController {
     }))
   }
 
+  // İşletme bazlı sağlık: son sipariş, 24s sipariş sayısı, sanalPOS durumu
+  @Get('health/businesses')
+  async healthBusinesses() {
+    const tenants = await this.prisma.tenant.findMany({
+      select: { id: true, name: true, slug: true, apiKeys: true, createdAt: true },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    const orders = await this.prisma.order.groupBy({
+      by: ['tenantId'],
+      where: { createdAt: { gte: new Date(Date.now() - 24 * 3600 * 1000) } },
+      _count: { _all: true },
+    })
+
+    const lastOrders = await this.prisma.$queryRawUnsafe<Array<{ tenantId: string; lastOrder: Date }>>(`
+      SELECT DISTINCT ON ("tenantId") "tenantId", "createdAt" as "lastOrder"
+      FROM "Order"
+      ORDER BY "tenantId", "createdAt" DESC
+    `)
+
+    const orderCountByTenant = new Map(orders.map(o => [o.tenantId, o._count._all]))
+    const lastOrderByTenant = new Map(lastOrders.map(o => [o.tenantId, o.lastOrder]))
+
+    return tenants.map(t => {
+      const apiKeys = (t.apiKeys as any) || {}
+      const posConfigured = !!(apiKeys.paytr?.merchantId || apiKeys.iyzico?.apiKey || apiKeys.sipay?.clientCode || apiKeys.odeal?.appId)
+      const lastOrder = lastOrderByTenant.get(t.id)
+      const hoursSinceOrder = lastOrder ? Math.floor((Date.now() - new Date(lastOrder).getTime()) / 3600000) : null
+      return {
+        id: t.id,
+        name: t.name,
+        slug: t.slug,
+        createdAt: t.createdAt,
+        ordersLast24h: orderCountByTenant.get(t.id) || 0,
+        lastOrder: lastOrder || null,
+        hoursSinceOrder,
+        posConfigured,
+      }
+    })
+  }
+
 }
