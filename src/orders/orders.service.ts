@@ -151,6 +151,15 @@ export class OrdersService {
     const TERMINAL = ['delivered', 'completed', 'cancelled']
     const terminal = order.status
     if (TERMINAL.includes(terminal)) {
+      // Teslim edilmiş (delivered) siparişin masa kapatma sırasında "completed" olmasına izin ver
+      if (terminal === 'delivered' && status === 'completed') {
+        const updated = await this.prisma.order.update({
+          where: { id },
+          data: { status, ...(customerNote !== undefined ? { customerNote } : {}) },
+        })
+        this.orderEvents.next({ type: 'status_update', order: updated })
+        return updated
+      }
       const sameStatus = status === terminal
       if (sameStatus && customerNote !== undefined) {
         const updated = await this.prisma.order.update({
