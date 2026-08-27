@@ -32,6 +32,7 @@ export class OrdersController {
     tableNumber?: number | null
     waiterId?: string | null
     deviceId?: string
+    tableKey?: string
     customerVkn?: string
     customerTckn?: string
     customerEmail?: string
@@ -53,6 +54,12 @@ export class OrdersController {
         const allowedTables: number[] = cfg.masaNumbers || []
         if (allowedTables.length > 0 && !allowedTables.includes(body.tableNumber)) {
           throw new ForbiddenException('Bu masa numarasi icin siparis alinmiyor')
+        }
+        // Gizli masa anahtarı doğrulaması: masa anahtarı tanımlıysa eşleşmeli (eski masalar boş anahtarla serbest)
+        const tableKeys = (cfg.tableKeys && typeof cfg.tableKeys === 'object' ? cfg.tableKeys : {}) as Record<string, string>
+        const key = tableKeys[String(body.tableNumber)]
+        if (key && body.tableKey !== key) {
+          throw new ForbiddenException('Bu masaya sipariş gönderilemiyor. QR kodun güncel olduğundan emin olun.')
         }
       }
     }

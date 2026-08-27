@@ -162,7 +162,21 @@ export class StorefrontService {
     const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { storefrontConfig: true } })
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
-    await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: { ...cfg, ...config } } })
+
+    // Masa gizli anahtarları: yeni masalar için otomatik üret, mevcutları koru
+    const next = { ...cfg, ...config }
+    if (Array.isArray(config.masaNumbers)) {
+      const existing = (cfg.tableKeys && typeof cfg.tableKeys === 'object' ? cfg.tableKeys : {}) as Record<string, string>
+      const keys = { ...existing }
+      for (const n of config.masaNumbers) {
+        if (!keys[String(n)]) {
+          keys[String(n)] = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6)
+        }
+      }
+      next.tableKeys = keys
+    }
+
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { storefrontConfig: next } })
   }
 
   async updateLogo(tenantId: string, logoUrl: string) {
@@ -185,6 +199,7 @@ export class StorefrontService {
       bannerUrl: cfg.bannerUrl || '',
       products: cfg.products || [],
       masaNumbers: cfg.masaNumbers || [],
+      tableKeys: (cfg.tableKeys && typeof cfg.tableKeys === 'object' ? cfg.tableKeys : {}) as Record<string, string>,
       googleReviewUrl: cfg.googleReviewUrl || '',
       instagramUrl: cfg.instagramUrl || '',
       shopName: cfg.shopName || '',
