@@ -163,13 +163,16 @@ export class StorefrontService {
     if (!tenant) throw new NotFoundException('Isletme bulunamadi')
     const cfg = typeof tenant.storefrontConfig === 'string' ? JSON.parse(tenant.storefrontConfig) : (tenant.storefrontConfig || {})
 
-    // Masa gizli anahtarları: yeni masalar için otomatik üret, mevcutları koru
+    // Masa gizli anahtarları: YALNIZCA yeni eklenen masalara anahtar üret
+    // (mevcut masaların anahtarı yoksa dokunulmaz → eski QR'lar bozulmaz)
     const next = { ...cfg, ...config }
     if (Array.isArray(config.masaNumbers)) {
       const existing = (cfg.tableKeys && typeof cfg.tableKeys === 'object' ? cfg.tableKeys : {}) as Record<string, string>
       const keys = { ...existing }
+      const prevNumbers: number[] = Array.isArray(cfg.masaNumbers) ? cfg.masaNumbers : []
       for (const n of config.masaNumbers) {
-        if (!keys[String(n)]) {
+        // Yalnızca daha önce listede olmayan (yeni) masalara anahtar üret
+        if (!prevNumbers.includes(n)) {
           keys[String(n)] = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6)
         }
       }

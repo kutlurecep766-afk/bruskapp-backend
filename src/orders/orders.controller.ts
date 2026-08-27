@@ -55,10 +55,19 @@ export class OrdersController {
         if (allowedTables.length > 0 && !allowedTables.includes(body.tableNumber)) {
           throw new ForbiddenException('Bu masa numarasi icin siparis alinmiyor')
         }
-        // Gizli masa anahtarı doğrulaması: masa anahtarı tanımlıysa eşleşmeli (eski masalar boş anahtarla serbest)
+        // Gizli masa anahtarı doğrulaması
         const tableKeys = (cfg.tableKeys && typeof cfg.tableKeys === 'object' ? cfg.tableKeys : {}) as Record<string, string>
         const key = tableKeys[String(body.tableNumber)]
-        if (key && body.tableKey !== key) {
+
+        if (body.tableKey) {
+          // t anahtarı gönderildi: bu anahtarın hangi masaya ait olduğunu bul
+          const ownerTable = Object.keys(tableKeys).find(k => tableKeys[k] === body.tableKey)
+          // Anahtar hiçbir masaya ait değilse veya farklı bir masaya aitse reddet
+          if (!ownerTable || String(ownerTable) !== String(body.tableNumber)) {
+            throw new ForbiddenException('Bu QR kodu başka bir masaya ait. Lütfen masanızdaki QR kodunu okutun.')
+          }
+        } else if (key) {
+          // Anahtar gönderilmedi ama bu masanın anahtarı var → reddet (yeni masalar anahtar zorunlu)
           throw new ForbiddenException('Bu masaya sipariş gönderilemiyor. QR kodun güncel olduğundan emin olun.')
         }
       }
