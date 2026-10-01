@@ -287,6 +287,32 @@ export class TelegramService implements OnModuleInit {
   async handleTenantWebhook(tenantId: string, body: any): Promise<boolean> {
     const token = this.getTenantBotToken(tenantId)
     if (!token) return false
+
+    const cb = body?.callback_query
+    if (cb) {
+      const cbData = cb.data?.toString() || ''
+      const cbChatId = cb.message?.chat?.id?.toString()
+      const cbFrom = cb.from?.username || cb.from?.id?.toString() || 'unknown'
+      const cbFromName = cb.from?.first_name || cb.from?.username || ''
+      await this.answerCallbackQuery(tenantId, cb.id).catch(() => {})
+      if (cbData && cbChatId) {
+        if (this.messagesService) {
+          await this.messagesService.create({
+            platform: 'telegram', from: cbFrom, fromName: cbFromName, content: cbData,
+            messageId: cb.message?.message_id?.toString() || Date.now().toString(),
+            tenantId, direction: 'incoming',
+          }).catch(() => {})
+        }
+        if (this.aiQueue) {
+          this.aiQueue.enqueue({
+            platform: 'telegram', tenantId, senderId: cbFrom,
+            chatId: cbChatId, fromName: cbFromName, message: cbData,
+          }).catch(() => {})
+        }
+      }
+      return true
+    }
+
     const msg = body?.message
     if (!msg) return true
     const chatId = msg.chat?.id?.toString()
@@ -350,13 +376,24 @@ export class TelegramService implements OnModuleInit {
     } catch { return false }
   }
 
-  async sendTenantMessage(tenantId: string, chatId: string, text: string, parseMode = 'HTML'): Promise<boolean> {
+  async sendTenantMessage(tenantId: string, chatId: string, text: string, parseMode = 'HTML', replyMarkup?: any): Promise<boolean> {
     const token = this.getTenantBotToken(tenantId)
     if (!token || !chatId || !text) return false
     try {
-      const res = await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/sendMessage', {
-        chat_id: chatId, text, parse_mode: parseMode,
-      }))
+      const payload: any = { chat_id: chatId, text, parse_mode: parseMode }
+      if (replyMarkup) payload.reply_markup = replyMarkup
+      const res = await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/sendMessage', payload))
+      return !!res.data?.ok
+    } catch { return false }
+  }
+
+  async answerCallbackQuery(tenantId: string, callbackQueryId: string, text?: string): Promise<boolean> {
+    const token = this.getTenantBotToken(tenantId)
+    if (!token || !callbackQueryId) return false
+    try {
+      const payload: any = { callback_query_id: callbackQueryId }
+      if (text) payload.text = text
+      const res = await lastValueFrom(this.http.post('https://api.telegram.org/bot' + token + '/answerCallbackQuery', payload))
       return !!res.data?.ok
     } catch { return false }
   }

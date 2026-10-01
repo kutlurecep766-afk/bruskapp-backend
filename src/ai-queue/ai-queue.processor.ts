@@ -70,11 +70,16 @@ export class AiQueueProcessor extends WorkerHost {
   }
 
   private async sendTelegram(data: AiMessageJobData, reply: string) {
-    const ok = await this.telegramService.sendTenantMessage(data.tenantId, data.chatId || data.senderId, reply)
+    const parsed = WebchatService.parseButtons(reply)
+    let replyMarkup: any = undefined
+    if (parsed.buttons.length) {
+      replyMarkup = { inline_keyboard: [parsed.buttons.map(b => ({ text: b, callback_data: b.slice(0, 60) }))] }
+    }
+    const ok = await this.telegramService.sendTenantMessage(data.tenantId, data.chatId || data.senderId, parsed.text, 'HTML', replyMarkup)
     if (ok) {
       await this.messagesService.create({
         platform: 'telegram', from: data.senderId, fromName: data.fromName || '',
-        content: reply, messageId: 'out_' + Date.now().toString(), tenantId: data.tenantId, direction: 'outgoing',
+        content: parsed.text, messageId: 'out_' + Date.now().toString(), tenantId: data.tenantId, direction: 'outgoing',
       }).catch(() => {})
     }
   }

@@ -345,16 +345,26 @@ export class WebchatService {
     prompt += `- Bilgi havuzunda cevap yoksa KENDI profesyonel ve nazik tarzinla cevap ver, kisa ve yardimci ol. "Bu konuda su an bilgim yok" gibi kalip cevaplar KULLANMA.\n`
     prompt += `- KESINLIKLE kendi bilgini uydurma, bilgi havuzundaki bilgileri ve isletme ayarlarini kullan.\n`
     prompt += `- KESINLIKLE su tür genel cevaplari VERME: "Mesajiniz alindi", "En kisa surede donus yapilacaktir", "Iletilecektir", "Gerekli yonlendirme yapilacaktir".\n`
-    prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
+    prompt += `- Genel olarak isaretleme kullanma, duzyazi yaz. Sadece asagidaki BUTONLAR satiri istisnadir.\n`
     prompt += `- YETENEKLERIN: Siparis alabilir, randevu olusturabilir, rezervasyon yapabilir ve iptal edebilirsin.\n`
     prompt += `- SIPARIS: Kullanici siparis vermek istedigi anda "Siparisinizi aldim" de ve onayla.\n`
     prompt += `- RANDEVU/REZERVASYON: Kullanici randevu veya rezervasyon istedigi anda tarih ve saat bilgisini al, "Randevunuz/Rezervasyonunuz [tarih] [saat]'te olusturuldu" de.\n`
     prompt += `- İPTAL: Kullanici iptal istedigi once "Iptal sebebinizi ogrenebilir miyim?" diye sor. Sebebi alinca "Iptaliniz gerceklestirildi" de. Hangi randevu/siparis oldugunu anlamak icin tarih veya urun adi iste. Ornek: "Hangi tarihteki randevunuzu iptal etmek istiyorsunuz?"\n`
+    prompt += `- BUTONLAR: Kullaniciya secenek sunman gerektiginde (ornek: sos, icecek, boyut, evet/hayir, saat secimi), cevabinin EN SON satirina AYNEN su formatta TEK satir ekle: [[BUTONLAR: secenek1|secenek2|secenek3]]. En fazla 3 secenek, her secenek 1-3 kelime. Bu satiri cevabin icine karistirma, en sona koy. Secenek yoksa bu satiri YAZMA.\n`
     if (c.systemPrompt) prompt += `- ${c.systemPrompt}\n`
     if (c.knowledgeBase) {
       prompt += `\nBILGI HAVUZU:\n${c.knowledgeBase}\n`
     }
     return prompt
+  }
+
+  static parseButtons(text: string): { text: string; buttons: string[] } {
+    const raw = String(text || '')
+    const m = raw.match(/\[\[BUTONLAR:\s*([^\]]+)\]\]/i)
+    if (!m) return { text: raw.trim(), buttons: [] }
+    const buttons = m[1].split('|').map(s => s.trim()).filter(Boolean).slice(0, 3)
+    const clean = raw.replace(m[0], '').replace(/\s+$/, '').trim()
+    return { text: clean, buttons }
   }
 
   private buildContext(config: ChatBotConfig, message: string): string {
@@ -485,7 +495,6 @@ export class WebchatService {
     clean = clean.replace(/`(.+?)`/g, '$1')
     clean = clean.replace(/#{1,6}\s/g, '')
     clean = clean.replace(/```[\s\S]*?```/g, '')
-    clean = clean.replace(/https?:\/\/\S+/g, '[link]')
     clean = clean.replace(/sk-[a-zA-Z0-9]{20,}/g, '[REDACTED]')
     clean = clean.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, (m) => {
       const parts = m.split('@')
