@@ -73,6 +73,7 @@ export class WebchatService {
   private conversations = new Map<string, Conversation>()
   private aiApiKey: string
   private aiModel: string
+  private aiBaseUrl: string
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
@@ -86,6 +87,7 @@ export class WebchatService {
   ) {
     this.aiApiKey = process.env.AI_API_KEY || process.env.DEEPSEEK_API_KEY || ''
     this.aiModel = process.env.AI_MODEL || 'deepseek-chat'
+    this.aiBaseUrl = process.env.AI_BASE_URL || 'https://api.deepseek.com/v1/chat/completions'
   }
 
   private defaultConfig(tenantName?: string): ChatBotConfig {
@@ -438,7 +440,7 @@ export class WebchatService {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT)
 
-      let res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      let res = await fetch(this.aiBaseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -456,7 +458,7 @@ export class WebchatService {
           await new Promise(r => setTimeout(r, 500))
           const controller2 = new AbortController()
           const timeout2 = setTimeout(() => controller2.abort(), AI_TIMEOUT)
-          res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+          res = await fetch(this.aiBaseUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.aiApiKey}` },
             body,
