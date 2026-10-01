@@ -63,11 +63,11 @@ export class AuthController {
     }
     const result = await this.authService.login(user)
     res.cookie('access_token', result.accessToken, {
-      httpOnly: true, secure: true, sameSite: 'strict',
+      httpOnly: true, secure: true, sameSite: 'lax',
       path: '/',
     })
     res.cookie('refresh_token', result.refreshToken, {
-      httpOnly: true, secure: true, sameSite: 'strict',
+      httpOnly: true, secure: true, sameSite: 'lax',
       path: '/api/auth',
     })
     const has2fa = await this.authService.hasTwoFactorEnabled(user.userId)
@@ -86,11 +86,11 @@ export class AuthController {
     if (!refreshToken) throw new UnauthorizedException('Refresh token bulunamadi')
     const result = await this.authService.refresh(refreshToken)
     res.cookie('access_token', result.accessToken, {
-      httpOnly: true, secure: true, sameSite: 'strict',
+      httpOnly: true, secure: true, sameSite: 'lax',
       path: '/',
     })
     res.cookie('refresh_token', result.refreshToken, {
-      httpOnly: true, secure: true, sameSite: 'strict',
+      httpOnly: true, secure: true, sameSite: 'lax',
       path: '/api/auth',
     })
     return { success: true }

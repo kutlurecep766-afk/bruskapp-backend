@@ -326,6 +326,20 @@ export class ZernioService implements OnModuleInit {
     return { success: false }
   }
 
+  async recordZernioConnection(profileId: string, platform: string, accountId?: string, username?: string): Promise<boolean> {
+    if (!profileId || !platform) return false
+    const conn = await this.prisma.zernioConnection.findFirst({ where: { profileId } })
+    if (!conn) return false
+    const platforms = (conn.platforms as any[]) || []
+    const existing = platforms.findIndex((p: any) => p.platform === platform)
+    const entry = { platform, accountId: accountId || '', status: 'connected', connectedAt: new Date().toISOString(), username: username || '' }
+    if (existing >= 0) platforms[existing] = entry
+    else platforms.push(entry)
+    await this.prisma.zernioConnection.update({ where: { tenantId: conn.tenantId }, data: { platforms } })
+    await this.savePlatformsToConfig(conn.tenantId, platforms)
+    return true
+  }
+
   async getConnections(tenantId?: string): Promise<any[]> {
     if (tenantId) {
       const conn = await this.prisma.zernioConnection.findUnique({ where: { tenantId } })
@@ -395,16 +409,19 @@ export class ZernioService implements OnModuleInit {
     this.logger.log('Zernio webhook alindi: ' + (event || 'bilinmeyen'))
 
     if (event === 'message.received') {
-      const profileId = payload?.account?.profileId || payload?.profileId
+      const profileId = body?.account?.profileId || payload?.account?.profileId || payload?.profileId
       if (profileId) {
         const conn = await this.prisma.zernioConnection.findFirst({ where: { profileId } })
         if (conn?.tenantId) {
-          const platform = payload?.account?.platform || payload?.platform || 'unknown'
-          const senderId = payload?.sender?.id || payload?.message?.sender?.id || payload?.message?.from || payload?.from || 'unknown'
-          const fromName = payload?.sender?.name || payload?.message?.sender?.name || null
-          const conversationId = payload?.conversationId || payload?.conversation?.id || payload?.message?.conversationId || ''
-          const content = payload?.text || payload?.message?.text || payload?.message?.content || payload?.text || ''
-          const messageId = body?.id || payload?.messageId || payload?.message?._id || Date.now().toString()
+          const account = body?.account || payload?.account || {}
+          const msg = body?.message || payload?.message || {}
+          const conv = body?.conversation || payload?.conversation || {}
+          const platform = account?.platform || payload?.platform || msg?.platform || 'unknown'
+          const senderId = msg?.sender?.id || conv?.participantId || payload?.sender?.id || 'unknown'
+          const fromName = msg?.sender?.name || conv?.participantName || payload?.sender?.name || null
+          const conversationId = msg?.conversationId || conv?.id || payload?.conversationId || ''
+          const content = msg?.text || msg?.content || payload?.text || ''
+          const messageId = msg?.id || body?.id || Date.now().toString()
 
           await this.messagesService.create({
             platform: 'zernio_' + platform,

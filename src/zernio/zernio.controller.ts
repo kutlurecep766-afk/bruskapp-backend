@@ -1,6 +1,7 @@
 import { Controller, Get, Post, Param, Query, Body, Req, Res, Headers, HttpCode, HttpStatus } from '@nestjs/common'
 import { Request, Response } from 'express'
 import { ZernioService } from './zernio.service'
+import { Public } from '../auth/public.decorator'
 
 @Controller('zernio')
 export class ZernioController {
@@ -14,6 +15,7 @@ export class ZernioController {
     return { success: false, message: 'Baglanti URL alinamadi' }
   }
 
+  @Public()
   @Get('callback')
   async callback(
     @Query('tenantId') tenantId: string,
@@ -26,6 +28,9 @@ export class ZernioController {
     @Query('step') step: string,
     @Query('connect_token') connectToken: string,
     @Query('userProfile') userProfile: string,
+    @Query('connected') connected: string,
+    @Query('accountId') accountId: string,
+    @Query('username') username: string,
     @Res() res: Response,
   ) {
     const baseRedirect = '/brk-mgmt/chatbot-integrations'
@@ -51,6 +56,11 @@ export class ZernioController {
       return res.redirect(baseRedirect + '?error=Baglanti%20kurulamadi')
     }
 
+    if (connected && profileId) {
+      try { await this.zernio.recordZernioConnection(profileId, connected, accountId, username) } catch { }
+      return res.redirect(baseRedirect + '?connected=' + encodeURIComponent(connected))
+    }
+
     res.redirect(baseRedirect)
   }
 
@@ -67,13 +77,17 @@ export class ZernioController {
     return { success: ok, message: ok ? 'Baglanti kaldirildi' : 'Baglanti bulunamadi' }
   }
 
+  @Public()
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
   async webhook(@Req() req: Request, @Body() body: any, @Headers('x-zernio-signature') signature: string) {
-    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(body)
-    const ok = await this.zernio.handleWebhook(body, rawBody, signature)
-    if (!ok) return { received: false }
-    return { received: true }
+    try {
+      const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(body)
+      const ok = await this.zernio.handleWebhook(body, rawBody, signature)
+      return { received: !!ok }
+    } catch {
+      return { received: false }
+    }
   }
 
   @Get('status')

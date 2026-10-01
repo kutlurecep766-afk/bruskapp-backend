@@ -324,7 +324,9 @@ export class TenantsService {
       const zp = zernio.platforms as any
       if (Array.isArray(zp)) {
         for (const p of zp) {
-          const pp = p.toLowerCase()
+          const raw = typeof p === 'string' ? p : (p?.platform || '')
+          if (!raw) continue
+          const pp = String(raw).toLowerCase().replace('zernio_', '')
           if (!platforms.includes(pp)) platforms.push(pp)
         }
       }
