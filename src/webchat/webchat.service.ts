@@ -362,10 +362,11 @@ export class WebchatService {
 
   static parseButtons(text: string): { text: string; buttons: string[] } {
     const raw = String(text || '')
-    const m = raw.match(/\[\[BUTONLAR:\s*([^\]]+)\]\]/i)
+    const m = raw.match(/\[\[(?:butonlar[:\s]*)?([^\[\]]*\|[^\[\]]*)\]\]/i)
     if (!m) return { text: raw.trim(), buttons: [] }
     const buttons = m[1].split('|').map(s => s.trim()).filter(Boolean).slice(0, 3)
-    const clean = raw.replace(m[0], '').replace(/\s+$/, '').trim()
+    if (buttons.length < 2) return { text: raw.trim(), buttons: [] }
+    const clean = raw.replace(m[0], '').replace(/[ \t]+$/gm, '').replace(/\s+$/, '').trim()
     return { text: clean, buttons }
   }
 
