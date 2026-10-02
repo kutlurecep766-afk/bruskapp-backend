@@ -679,9 +679,9 @@ export class WebchatService {
         if (now - last > 60000) {
           this.lastOrderAt.set(sessionKey, now)
           const cfgP: any = await this.getConfig(tenantId).catch(() => null)
-          const parsed = this.parseItems(cleaned, (cfgP && cfgP.products) || [])
+          const parsed = this.parseItems(allMsgs, (cfgP && cfgP.products) || [])
           const products = parsed.length ? parsed : [{ name: 'Belirtilmedi', quantity: 1 }]
-          if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products, totalAmount: 0, note: cleaned }).catch(() => {})
+          if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products, totalAmount: 0, note: allMsgs.slice(0, 300) }).catch(() => {})
         }
       }
       if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
@@ -766,7 +766,7 @@ export class WebchatService {
       if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir')) && lowerResp.includes('alındı')) {
         if (this.ordersService) {
           const cfgI: any = await this.getConfig(tenant.id).catch(() => null)
-          const parsedI = this.parseItems(message, (cfgI && cfgI.products) || [])
+          const parsedI = this.parseItems(allMsgs, (cfgI && cfgI.products) || [])
           const products = parsedI.length ? parsedI : [{ name: 'Belirtilmedi', quantity: 1 }]
           await this.ordersService.create({
             tenantId: tenant.id,
