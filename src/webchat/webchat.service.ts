@@ -78,6 +78,7 @@ export class WebchatService {
   private aiModel: string
   private aiBaseUrl: string
   private lastOrderAt = new Map<string, number>()
+  private pendingOrders = new Map<string, { name: string; quantity: number }[]>()
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
@@ -200,6 +201,27 @@ export class WebchatService {
       .replace(/\n{3,}/g, '\n\n')
       .replace(/[ \t]+$/gm, '')
       .trim()
+  }
+
+  private parseOrderLines(text: string): { name: string; quantity: number }[] {
+    const out: { name: string; quantity: number }[] = []
+    for (const line of String(text || '').split('\n')) {
+      const t = line.replace(/^[^0-9A-Za-zÇĞİÖŞÜçğıöşü]+/, '').trim()
+      const m = t.match(/^(\d+)\s*(?:x|×|\*)\s*(.+)$/i)
+      if (m) {
+        const name = m[2].replace(/https?:\/\/\S+/g, '').replace(/[✅✔*]/g, '').replace(/\s*[-–:].*$/, '').trim()
+        if (name) out.push({ name, quantity: parseInt(m[1]) || 1 })
+      }
+    }
+    return out
+  }
+
+  private isApprovalMessage(text: string): boolean {
+    const t = String(text || '').toLowerCase().trim()
+    if (!t) return false
+    if (/(onayl|onay\s*ver|onayla|kabul ed|kabul|tasdik|approve|confirm)/i.test(t)) return true
+    if (/^(evet|tamam|olur|aynen|doğru|dogru|uygun|ok|peki)[.!]?$/i.test(t)) return true
+    return false
   }
 
   async getOrCreateConversation(sessionKey: string, tenantId?: string, from?: string): Promise<Conversation> {
@@ -428,7 +450,7 @@ export class WebchatService {
       }
     }
     if (canOrder) prompt += `- SIPARIS: Kullanici siparis vermek istediginde URUNU ve BIRIMI netlestir (kg/adet/gram/set/porsiyon), secenekleri sor; sonra tum siparisi MADDELER halinde ozetle ve "Onayliyor musunuz?" diye sor. Onay gelince "Siparisinizi aldim" de.\n`
-    if (canOrder) prompt += `- SIPARIS MAKINE BLOGU: Siparis KESINLESIP onay alinca, cevabinin EN SONUNA gizli blok ekle. Sadece bu blok, baska aciklama yok. Her urun AYRI SATIRDA. Format AYNEN:\n[SIPARIS]\n2 x Urun Adi\n1 x Diger Urun\n[/SIPARIS]\nBlok icinde fiyat, aciklama veya baska yazi YAZMA. Urun adi kisa olsun.\n`
+    if (canOrder) prompt += `- SIPARIS MAKINE BLOGU: Siparisi ozetleyip listeledigin HER mesajda (onay isterken de, onay aldiktan sonra da), cevabinin EN SONUNA gizli blok ekle. Blok her zaman EN SONDA olsun. Her urun AYRI SATIRDA. Format AYNEN:\n[SIPARIS]\n2 x Urun Adi\n1 x Diger Urun\n[/SIPARIS]\nBlok icinde fiyat, aciklama veya baska yazi YAZMA. Urun adi kisa olsun.\n`
     if (canAppt) prompt += `- RANDEVU: Kullanici randevu istediginde HIZMETI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Randevunuz olusturuldu" de.\n`
     if (canRes) prompt += `- REZERVASYON: Kullanici rezervasyon istediginde KISI SAYISI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Rezervasyonunuz olusturuldu" de.\n`
     prompt += `- İPTAL: Kullanici iptal istedigi once "Iptal sebebinizi ogrenebilir miyim?" diye sor. Sebebi alinca "Iptaliniz gerceklestirildi" de. Hangi randevu/siparis oldugunu anlamak icin tarih veya urun adi iste. Ornek: "Hangi tarihteki randevunuzu iptal etmek istiyorsunuz?"\n`
@@ -678,8 +700,10 @@ export class WebchatService {
     const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
     const rawResponse = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
     if (!rawResponse) return null
-    const orderBlock = this.parseOrderBlock(rawResponse)
-    const response = orderBlock.length ? this.stripOrderBlock(rawResponse) : rawResponse
+    const blockNow = this.parseOrderBlock(rawResponse)
+    const linesNow = blockNow.length ? blockNow : this.parseOrderLines(rawResponse)
+    const response = blockNow.length ? this.stripOrderBlock(rawResponse) : rawResponse
+    if (linesNow.length) this.pendingOrders.set(sessionKey, linesNow)
     conv.messages.push({ role: 'assistant', content: response })
     // Multi-channel lead creation
     try {
@@ -702,17 +726,11 @@ export class WebchatService {
       const features = (featureTenant?.features as any) || {}
       const pConv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       const allMsgs = pConv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
-      const lower = cleaned.toLowerCase()
-      if (features.orders !== false && (orderBlock.length > 0 || allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum') || allMsgs.includes('alacağım') || allMsgs.includes('istiyorum'))) {
-        const now = Date.now()
-        const last = this.lastOrderAt.get(sessionKey) || 0
-        if (now - last > 60000) {
-          this.lastOrderAt.set(sessionKey, now)
-          const cfgP: any = await this.getConfig(tenantId).catch(() => null)
-          const parsed = orderBlock.length ? orderBlock : this.parseItems(allMsgs, (cfgP && cfgP.products) || [])
-          const products = parsed.length ? parsed : [{ name: 'Belirtilmedi', quantity: 1 }]
-          if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products, totalAmount: 0, note: allMsgs.slice(0, 300) }).catch(() => {})
-        }
+      const approve = this.isApprovalMessage(cleaned)
+      const pending = this.pendingOrders.get(sessionKey) || []
+      if (features.orders !== false && approve && pending.length) {
+        this.pendingOrders.delete(sessionKey)
+        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products: pending, totalAmount: 0, note: '' }).catch(() => {})
       }
       if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
         if (this.appointmentsService) this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
@@ -792,22 +810,22 @@ export class WebchatService {
         return
       }
 
-      // Sipariş tespiti (AI onayladıysa)
-      const hasOrderBlock = /\[(?:SIPARIS|SIPARIŞ|ORDER)\]/i.test(aiResponse)
-      if (features.orders !== false && (hasOrderBlock || ((allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir')) && (lowerResp.includes('alındı') || lowerResp.includes('aldım') || lowerResp.includes('aldim'))))) {
+      // Sipariş tespiti (müşteri onayı + makine blok)
+      const blockI = this.parseOrderBlock(aiResponse)
+      const linesI = blockI.length ? blockI : this.parseOrderLines(aiResponse)
+      if (linesI.length) this.pendingOrders.set(sessionId, linesI)
+      const pendingI = this.pendingOrders.get(sessionId) || []
+      if (features.orders !== false && this.isApprovalMessage(message) && pendingI.length) {
+        this.pendingOrders.delete(sessionId)
         if (this.ordersService) {
-          const cfgI: any = await this.getConfig(tenant.id).catch(() => null)
-          const blockI = this.parseOrderBlock(aiResponse)
-          const parsedI = blockI.length ? blockI : this.parseItems(allMsgs, (cfgI && cfgI.products) || [])
-          const products = parsedI.length ? parsedI : [{ name: 'Belirtilmedi', quantity: 1 }]
           await this.ordersService.create({
             tenantId: tenant.id,
             platform: 'webchat',
             customerName,
             customerContact,
-            products,
+            products: pendingI,
             totalAmount: 0,
-            note: message,
+            note: '',
           }).catch(() => {})
         }
       }
