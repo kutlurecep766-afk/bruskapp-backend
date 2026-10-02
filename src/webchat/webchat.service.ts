@@ -138,9 +138,18 @@ export class WebchatService {
       (updates as any).knowledgeBase = current.knowledgeBase
     }
     const merged = { ...current, ...updates }
+    const dataUpdate: any = { webchatConfig: merged as any }
+    if (updates.modes) {
+      const t2 = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
+      const feats: any = (t2?.features && typeof t2.features === 'object') ? t2.features : {}
+      if (updates.modes.orders !== undefined) feats.orders = !!updates.modes.orders
+      if (updates.modes.appointments !== undefined) feats.appointments = !!updates.modes.appointments
+      if (updates.modes.reservations !== undefined) feats.reservations = !!updates.modes.reservations
+      dataUpdate.features = feats
+    }
     await this.prisma.tenant.update({
       where: { id: tenantId },
-      data: { webchatConfig: merged as any },
+      data: dataUpdate,
     })
     return merged
   }
