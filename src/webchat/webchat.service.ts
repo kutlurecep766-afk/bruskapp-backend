@@ -10,6 +10,8 @@ export interface Product {
   name: string
   price: string
   description: string
+  unit?: string
+  options?: { name: string; price?: string }[]
 }
 
 export interface FAQ {
@@ -29,6 +31,7 @@ export interface ChatBotConfig {
   faqs: FAQ[]
   systemPrompt: string
   knowledgeBase: string
+  modes?: { orders?: boolean; appointments?: boolean; reservations?: boolean }
 }
 
 interface Message {
@@ -348,9 +351,26 @@ export class WebchatService {
     prompt += `- KESINLIKLE kendi bilgini uydurma, bilgi havuzundaki bilgileri ve isletme ayarlarini kullan.\n`
     prompt += `- KESINLIKLE su tür genel cevaplari VERME: "Mesajiniz alindi", "En kisa surede donus yapilacaktir", "Iletilecektir", "Gerekli yonlendirme yapilacaktir".\n`
     prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
-    prompt += `- YETENEKLERIN: Siparis alabilir, randevu olusturabilir, rezervasyon yapabilir ve iptal edebilirsin.\n`
-    prompt += `- SIPARIS: Kullanici siparis vermek istedigi anda "Siparisinizi aldim" de ve onayla.\n`
-    prompt += `- RANDEVU/REZERVASYON: Kullanici randevu veya rezervasyon istedigi anda tarih ve saat bilgisini al, "Randevunuz/Rezervasyonunuz [tarih] [saat]'te olusturuldu" de.\n`
+    const modes: any = c.modes || {}
+    const canOrder = modes.orders !== false
+    const canAppt = modes.appointments !== false
+    const canRes = modes.reservations !== false
+    const caps: string[] = []
+    if (canOrder) caps.push('SIPARIS alabilirsin')
+    if (canAppt) caps.push('RANDEVU alabilirsin')
+    if (canRes) caps.push('REZERVASYON alabilirsin')
+    prompt += `- YETENEKLERIN: ${caps.length ? caps.join(', ') : 'soru-cevap yapabilirsin'}.\n`
+    if (canOrder && c.products.length) {
+      prompt += `- URUNLER (sadece bunlari kullan):\n`
+      for (const p of c.products) {
+        const u = p.unit ? ` (birim: ${p.unit})` : ''
+        const op = (p.options && p.options.length) ? ` | secenekler: ${p.options.map(o => o.name + (o.price ? ' +' + o.price : '')).join(', ')}` : ''
+        prompt += `  * ${p.name}: ${p.price}${u}${op}\n`
+      }
+    }
+    if (canOrder) prompt += `- SIPARIS: Kullanici siparis vermek istediginde URUNU ve BIRIMI netlestir (kg/adet/gram/set/porsiyon), secenekleri sor; sonra tum siparisi MADDELER halinde ozetle ve "Onayliyor musunuz?" diye sor. Onay gelince "Siparisinizi aldim" de.\n`
+    if (canAppt) prompt += `- RANDEVU: Kullanici randevu istediginde HIZMETI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Randevunuz olusturuldu" de.\n`
+    if (canRes) prompt += `- REZERVASYON: Kullanici rezervasyon istediginde KISI SAYISI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Rezervasyonunuz olusturuldu" de.\n`
     prompt += `- İPTAL: Kullanici iptal istedigi once "Iptal sebebinizi ogrenebilir miyim?" diye sor. Sebebi alinca "Iptaliniz gerceklestirildi" de. Hangi randevu/siparis oldugunu anlamak icin tarih veya urun adi iste. Ornek: "Hangi tarihteki randevunuzu iptal etmek istiyorsunuz?"\n`
     if (c.systemPrompt) prompt += `- ${c.systemPrompt}\n`
     if (c.knowledgeBase) {
