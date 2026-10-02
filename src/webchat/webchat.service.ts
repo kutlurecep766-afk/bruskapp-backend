@@ -77,6 +77,7 @@ export class WebchatService {
   private aiApiKey: string
   private aiModel: string
   private aiBaseUrl: string
+  private lastOrderAt = new Map<string, number>()
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
@@ -152,6 +153,28 @@ export class WebchatService {
       data: dataUpdate,
     })
     return merged
+  }
+
+  private parseItems(message: string, products: any[]): { name: string; quantity: number }[] {
+    const lower = String(message || '').toLowerCase()
+    const items: { name: string; quantity: number }[] = []
+    for (const p of (products || [])) {
+      const name = String(p?.name || '').toLowerCase().trim()
+      if (!name) continue
+      if (lower.includes(name)) {
+        const idx = lower.indexOf(name)
+        const before = lower.slice(Math.max(0, idx - 15), idx)
+        const m = before.match(/(\d+)\s*(?:adet|tane|porsiyon|kg|gram)?\s*$/)
+        items.push({ name: p.name, quantity: m ? (parseInt(m[1]) || 1) : 1 })
+      }
+    }
+    if (items.length) return items
+    const m = message.match(/(\d+)\s*(?:adet|tane|porsiyon|kg|gram)?\s*([^\d,.;]{2,40})/i)
+    if (m) {
+      const nm = m[2].trim().replace(/\b(istiyorum|istiyor|alacağım|alacagim|lütfen|lutfen|adet|tane|sipariş|siparis|almak|verir|olsun|bir)\b/gi, '').trim()
+      if (nm) return [{ name: nm, quantity: parseInt(m[1]) || 1 }]
+    }
+    return []
   }
 
   async getOrCreateConversation(sessionKey: string, tenantId?: string, from?: string): Promise<Conversation> {
@@ -650,9 +673,16 @@ export class WebchatService {
       const pConv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       const allMsgs = pConv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
       const lower = cleaned.toLowerCase()
-      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum'))) {
-        const productMatch = cleaned.match(/(\d+)\s*(?:adet|tane)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
-        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products: productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }], totalAmount: 0, note: 'AI ile oluşturuldu' }).catch(() => {})
+      if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('almak istiyorum') || allMsgs.includes('alacağım') || allMsgs.includes('istiyorum'))) {
+        const now = Date.now()
+        const last = this.lastOrderAt.get(sessionKey) || 0
+        if (now - last > 60000) {
+          this.lastOrderAt.set(sessionKey, now)
+          const cfgP: any = await this.getConfig(tenantId).catch(() => null)
+          const parsed = this.parseItems(cleaned, (cfgP && cfgP.products) || [])
+          const products = parsed.length ? parsed : [{ name: 'Belirtilmedi', quantity: 1 }]
+          if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products, totalAmount: 0, note: cleaned }).catch(() => {})
+        }
       }
       if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
         if (this.appointmentsService) this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
@@ -735,8 +765,9 @@ export class WebchatService {
       // Sipariş tespiti (AI onayladıysa)
       if (features.orders !== false && (allMsgs.includes('sipariş') || allMsgs.includes('siparis') || allMsgs.includes('ısmarlamak') || allMsgs.includes('almak istiyorum') || allMsgs.includes('getir')) && lowerResp.includes('alındı')) {
         if (this.ordersService) {
-          const productMatch = message.match(/(\d+)\s*(?:adet|tane|porsiyon|kg)?\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
-          const products = productMatch ? [{ name: productMatch[2]?.trim() || 'Belirtilmedi', quantity: parseInt(productMatch[1]) || 1 }] : [{ name: 'Belirtilmedi', quantity: 1 }]
+          const cfgI: any = await this.getConfig(tenant.id).catch(() => null)
+          const parsedI = this.parseItems(message, (cfgI && cfgI.products) || [])
+          const products = parsedI.length ? parsedI : [{ name: 'Belirtilmedi', quantity: 1 }]
           await this.ordersService.create({
             tenantId: tenant.id,
             platform: 'webchat',
@@ -744,7 +775,7 @@ export class WebchatService {
             customerContact,
             products,
             totalAmount: 0,
-            note: 'AI ile oluşturuldu',
+            note: message,
           }).catch(() => {})
         }
       }
