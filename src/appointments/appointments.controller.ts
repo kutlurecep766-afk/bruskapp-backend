@@ -24,4 +24,18 @@ export class AppointmentsController {
     if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
     return this.service.updateStatus(id, body.status, tenantId)
   }
+
+  @Post(':id/cancel')
+  async cancel(@Param('id', ParseIntPipe) id: number, @Body() body: { notes?: string }, @Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.service.cancel(id, tenantId, body?.notes)
+  }
+
+  @Post(':id/update')
+  async update(@Param('id', ParseIntPipe) id: number, @Body() body: { customerName?: string; customerContact?: string; date?: string; time?: string; service?: string; notes?: string }, @Req() req: any) {
+    const tenantId = req.user?.tenantId
+    if (!tenantId) throw new BadRequestException('tenantId bulunamadi')
+    return this.service.update(id, tenantId, body)
+  }
 }

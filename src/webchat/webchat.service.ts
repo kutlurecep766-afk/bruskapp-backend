@@ -100,6 +100,7 @@ export class WebchatService {
   private aiBaseUrl: string
   private lastOrderAt = new Map<string, number>()
   private pendingOrders = new Map<string, { name: string; quantity: number }[]>()
+  private pendingAppts = new Map<string, { name?: string; phone?: string; service?: string; date?: string; time?: string; note?: string }>()
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
 
@@ -200,6 +201,44 @@ export class WebchatService {
       if (nm && nm.length >= 2) out.push({ name: nm, quantity: q ? (parseInt(q[1]) || 1) : 1 })
     }
     return out
+  }
+
+  private parseApptBlock(text: string): { name?: string; phone?: string; service?: string; date?: string; time?: string; note?: string } | null {
+    const raw = String(text || '')
+    const m = raw.match(/\[(?:RANDEVU|APPOINTMENT)\]([\s\S]*?)\[\/(?:RANDEVU|APPOINTMENT)\]/i)
+    if (!m) return null
+    const out: any = {}
+    for (const line of m[1].split('\n')) {
+      const t = line.replace(/^[\s\-•*>]+/, '').trim()
+      if (!t) continue
+      const kv = t.split(/[:=]/)
+      if (kv.length < 2) continue
+      const key = kv[0].trim().toLowerCase()
+      const val = kv.slice(1).join(':').trim()
+      if (!val) continue
+      if (/^(ad|isim|ad soyad|adsoyad|musteri|müşteri)$/.test(key)) out.name = val
+      else if (/^(telefon|tel|numara|phone)$/.test(key)) out.phone = val
+      else if (/^(hizmet|servis|service|islem|işlem)$/.test(key)) out.service = val
+      else if (/^(tarih|gun|gün|date)$/.test(key)) out.date = val
+      else if (/^(saat|time)$/.test(key)) out.time = val
+      else if (/^(not|notlar|note)$/.test(key)) out.note = val
+    }
+    return Object.keys(out).length ? out : null
+  }
+
+  private stripApptBlock(text: string): string {
+    return String(text || '').replace(/\[(?:RANDEVU|APPOINTMENT)\][\s\S]*?\[\/(?:RANDEVU|APPOINTMENT)\]/gi, '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim()
+  }
+
+  private parseTrDate(s: string | undefined): Date | null {
+    if (!s) return null
+    const months: Record<string, number> = { ocak: 0, şubat: 1, subat: 1, mart: 2, nisan: 3, mayıs: 4, mayis: 4, haziran: 5, temmuz: 6, ağustos: 7, agustos: 7, eylül: 8, eylul: 8, ekim: 9, kasım: 10, kasim: 10, aralık: 11, aralik: 11 }
+    const t = String(s).toLowerCase().trim()
+    let m = t.match(/(\d{1,2})[.\/\-](\d{1,2})[.\/\-](\d{2,4})/)
+    if (m) { let y = parseInt(m[3]); if (y < 100) y += 2000; return new Date(y, parseInt(m[2]) - 1, parseInt(m[1])) }
+    m = t.match(/(\d{1,2})\s+([a-zçğıöşü]+)/)
+    if (m && months[m[2]] !== undefined) { const y = new Date().getFullYear(); return new Date(y, months[m[2]], parseInt(m[1])) }
+    return null
   }
 
   private parseOrderBlock(text: string): { name: string; quantity: number }[] {
@@ -508,6 +547,8 @@ export class WebchatService {
       prompt += areq.length
         ? `- RANDEVU ICIN ZORUNLU BILGILER: ${areq.join(', ')}. Bunlar tamamlanmadan randevuyu ONAYLAMA.\n`
         : `- RANDEVU: Kullanici randevu istediginde HIZMETI ve TARIH/SAATI netlestir, ozetleyip onaylat.\n`
+      prompt += `- RANDEVU MAKINE BLOGU: Randevu bilgilerini toplayip OZETLEYIP onay isterken, cevabinin EN SONUNA gizli blok ekle. Format AYNEN:\n[RANDEVU]\nad: Ahmet Yilmaz\ntelefon: 05xxxxxxxxx\nhizmet: Protez Tirnak\ntarih: 15.06.2026\nsaat: 14:00\nnot: \n[/RANDEVU]\n- Bir alan bilinmiyorsa o satiri bos birak. Fiyat/aciklama yazma.\n`
+      prompt += `- RANDEVU GUNCELLEME: Musteri randevusunu ertelemek/tarih degistirmek isterse YENI tarih-saat al; bos/eksik tarihle degistirme. Iptal isterse once sebebini sor, sonra iptal et.\n`
     }
     if (canRes) prompt += `- REZERVASYON: Kullanici rezervasyon istediginde KISI SAYISI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Rezervasyonunuz olusturuldu" de.\n`
     prompt += `- İPTAL: Kullanici iptal istedigi once "Iptal sebebinizi ogrenebilir miyim?" diye sor. Sebebi alinca "Iptaliniz gerceklestirildi" de. Hangi randevu/siparis oldugunu anlamak icin tarih veya urun adi iste. Ornek: "Hangi tarihteki randevunuzu iptal etmek istiyorsunuz?"\n`
@@ -887,23 +928,67 @@ export class WebchatService {
         }
       }
 
-      // Randevu tespiti (AI onayladıysa)
-      if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene') || allMsgs.includes('tedavi') || allMsgs.includes('kuaför') || allMsgs.includes('berber') || allMsgs.includes('doktor') || allMsgs.includes('klinik')) && (lowerResp.includes('oluşturuldu') || lowerResp.includes('olusturuldu') || lowerResp.includes('alındı'))) {
-        if (this.appointmentsService) {
-          const dateMatch = message.match(/(\d{1,2})\s*(?:ocak|şubat|mart|nisan|mayıs|haziran|temmuz|ağustos|eylül|ekim|kasım|aralık|\.\d{1,2}\.\d{4}|\/\d{1,2}\/\d{4})/i)
-          const timeMatch = message.match(/(\d{1,2})[.:](\d{2})/)
-          const serviceMatch = message.match(/(?:için|randevusu|hizmeti)\s*(.+?)(?:\s*(?:ve|,|\.|$))/i)
-          const apptDate = dateMatch ? new Date(dateMatch[0]) : new Date(Date.now() + 86400000)
-          const apptTime = timeMatch ? timeMatch[0] : '10:00'
-          await this.appointmentsService.create({
-            tenantId: tenant.id,
-            platform: 'webchat',
-            customerName,
-            customerContact,
-            date: apptDate.toISOString(),
-            time: apptTime,
-            service: serviceMatch ? serviceMatch[1].trim() : '',
-          }).catch(() => {})
+      // Randevu: yapısal blok + onay akışı
+      if (features.appointments !== false) {
+        const ap = this.parseApptBlock(aiResponse)
+        if (ap) {
+          const st = { ...(this.pendingAppts.get(sessionId) || {}), ...ap }
+          this.pendingAppts.set(sessionId, st)
+        }
+        const pend = this.pendingAppts.get(sessionId) || {}
+
+        // Güncelleme (tarih değiştir / ertele)
+        const wantsUpdate = /(ertele|tarih(i|ini)?\s*(degis|değiş)|gun(u|ünü)?\s*(degis|değiş)|randevu.*guncelle|randevu.*güncelle)/i.test(message)
+        if (wantsUpdate && this.appointmentsService) {
+          const newDate = this.parseTrDate((message.match(/(\d{1,2})[.\/\-]\d{1,2}[.\/\-]\d{2,4}|\d{1,2}\s+[a-zçğıöşü]+/i) || [])[0]) || this.parseTrDate(pend.date)
+          const newTime = (message.match(/(\d{1,2})[.:](\d{2})/) || [])[0] || pend.time
+          if (newDate) {
+            const latest = await this.prisma.appointment.findFirst({ where: { tenantId: tenant.id, customerContact: customerContact || undefined, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+            if (latest && this.appointmentsService.update) {
+              await this.appointmentsService.update(latest.id, tenant.id, { date: newDate.toISOString(), time: newTime || latest.time || '' }).catch(() => {})
+              this.pendingAppts.delete(sessionId)
+            } else if (latest) {
+              await this.prisma.appointment.update({ where: { id: latest.id }, data: { date: newDate, time: newTime || latest.time || '' } }).catch(() => {})
+            }
+          }
+          return
+        }
+
+        // İptal
+        if (/(randevu)/i.test(allMsgs) && /(iptal|vazgeç|vazgec)/i.test(message) && /(iptal|edildi)/i.test(lowerResp)) {
+          const latest = await this.prisma.appointment.findFirst({ where: { tenantId: tenant.id, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' } })
+          if (latest) await this.prisma.appointment.update({ where: { id: latest.id }, data: { status: 'cancelled' } }).catch(() => {})
+          this.pendingAppts.delete(sessionId)
+          return
+        }
+
+        // Oluşturma (onay + zorunlu alanlar tam)
+        const isApproval = this.isApprovalMessage(message)
+        if (isApproval && pend && (pend.service || allMsgs.includes('randevu'))) {
+          const cfgA = await this.getConfig(tenant.id).catch(() => null as any)
+          const as: any = (cfgA && cfgA.appointmentSettings) || {}
+          const dateObj = this.parseTrDate(pend.date)
+          const missing: string[] = []
+          if (as.requireName && !pend.name) missing.push('Ad Soyad')
+          if (as.requirePhone && !(pend.phone || customerContact)) missing.push('Telefon')
+          if (as.requireService && !pend.service) missing.push('Hizmet')
+          if (as.requireDate && !dateObj) missing.push('Tarih')
+          if (as.requireTime && !pend.time) missing.push('Saat')
+          if (!missing.length) {
+            if (this.appointmentsService) {
+              await this.appointmentsService.create({
+                tenantId: tenant.id,
+                platform: 'webchat',
+                customerName: pend.name || customerName,
+                customerContact: pend.phone || customerContact,
+                date: (dateObj || new Date(Date.now() + 86400000)).toISOString(),
+                time: pend.time || '10:00',
+                service: pend.service || '',
+                notes: pend.note || '',
+              }).catch(() => {})
+            }
+            this.pendingAppts.delete(sessionId)
+          }
         }
       }
 

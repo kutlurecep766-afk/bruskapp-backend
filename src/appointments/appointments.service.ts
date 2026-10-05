@@ -31,4 +31,22 @@ export class AppointmentsService {
   async updateStatus(id: number, status: string, tenantId: string) {
     return this.prisma.appointment.update({ where: { id, tenantId }, data: { status } })
   }
+
+  async update(id: number, tenantId: string, data: { customerName?: string; customerContact?: string; date?: string; time?: string; service?: string; notes?: string }) {
+    const patch: any = {}
+    if (data.customerName !== undefined) patch.customerName = data.customerName
+    if (data.customerContact !== undefined) patch.customerContact = data.customerContact
+    if (data.time !== undefined) patch.time = data.time
+    if (data.service !== undefined) patch.service = data.service
+    if (data.notes !== undefined) patch.notes = data.notes
+    if (data.date !== undefined) {
+      const d = new Date(data.date)
+      if (!isNaN(d.getTime())) patch.date = d
+    }
+    return this.prisma.appointment.update({ where: { id, tenantId }, data: patch })
+  }
+
+  async cancel(id: number, tenantId: string, notes?: string) {
+    return this.prisma.appointment.update({ where: { id, tenantId }, data: { status: 'cancelled', notes: notes || undefined } })
+  }
 }
