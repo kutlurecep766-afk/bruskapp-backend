@@ -12,6 +12,24 @@ export interface Product {
   description: string
   unit?: string
   options?: { name: string; price?: string }[]
+  soldOut?: boolean
+}
+
+export interface Service {
+  name: string
+  duration?: string
+  price?: string
+}
+
+export interface ChatSettings {
+  requireName?: boolean
+  requirePhone?: boolean
+  requireAddress?: boolean
+  requireLocation?: boolean
+  requireNote?: boolean
+  requireService?: boolean
+  requireDate?: boolean
+  requireTime?: boolean
 }
 
 export interface FAQ {
@@ -28,6 +46,9 @@ export interface ChatBotConfig {
   email: string
   welcomeMessage: string
   products: Product[]
+  services?: Service[]
+  orderSettings?: ChatSettings
+  appointmentSettings?: ChatSettings
   faqs: FAQ[]
   systemPrompt: string
   knowledgeBase: string
@@ -442,16 +463,52 @@ export class WebchatService {
     if (canRes) caps.push('REZERVASYON alabilirsin')
     prompt += `- YETENEKLERIN: ${caps.length ? caps.join(', ') : 'soru-cevap yapabilirsin'}.\n`
     if (canOrder && c.products.length) {
+      const avail = c.products.filter(p => !p.soldOut)
+      const soldOut = c.products.filter(p => p.soldOut)
       prompt += `- URUNLER (sadece bunlari kullan):\n`
-      for (const p of c.products) {
+      for (const p of avail) {
         const u = p.unit ? ` (birim: ${p.unit})` : ''
         const op = (p.options && p.options.length) ? ` | secenekler: ${p.options.map(o => o.name + (o.price ? ' +' + o.price : '')).join(', ')}` : ''
         prompt += `  * ${p.name}: ${p.price}${u}${op}\n`
       }
+      if (soldOut.length) {
+        prompt += `- BITTI / STOKTA YOK (musteri isterse "maalesef su an yok" de, siparisi kabul ETME): ${soldOut.map(p => p.name).join(', ')}\n`
+        prompt += `- Sadece yukaridaki "URUNLER" listesindeki urunleri sat. Bitti listesindekileri SATMA.\n`
+      }
+    }
+    if (canOrder) {
+      const os = c.orderSettings || {}
+      const req: string[] = []
+      if (os.requireName) req.push('Ad Soyad')
+      if (os.requirePhone) req.push('Telefon')
+      if (os.requireAddress) req.push('Adres (manuel)')
+      if (os.requireLocation) req.push('Konum (WhatsApp konumu)')
+      if (os.requireNote) req.push('Siparis notu')
+      prompt += req.length
+        ? `- SIPARIS ICIN ZORUNLU BILGILER: ${req.join(', ')}. Bunlar tamamlanmadan siparisi ONAYLAMA ve "olusturuldu" DEME.\n`
+        : `- SIPARIS ICIN ZORUNLU BILGI YOK; sadece urun ve adet yeterli.\n`
     }
     if (canOrder) prompt += `- SIPARIS: Kullanici siparis vermek istediginde URUNU ve BIRIMI netlestir (kg/adet/gram/set/porsiyon), secenekleri sor; sonra tum siparisi MADDELER halinde ozetle ve "Onayliyor musunuz?" diye sor. Onay gelince "Siparisinizi aldim" de.\n`
     if (canOrder) prompt += `- SIPARIS MAKINE BLOGU: Siparisi ozetleyip listeledigin HER mesajda (onay isterken de, onay aldiktan sonra da), cevabinin EN SONUNA gizli blok ekle. Blok her zaman EN SONDA olsun. Her urun AYRI SATIRDA. Format AYNEN:\n[SIPARIS]\n2 x Urun Adi\n1 x Diger Urun\n[/SIPARIS]\nBlok icinde fiyat, aciklama veya baska yazi YAZMA. Urun adi kisa olsun.\n`
-    if (canAppt) prompt += `- RANDEVU: Kullanici randevu istediginde HIZMETI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Randevunuz olusturuldu" de.\n`
+    if (canAppt) {
+      if (c.services && c.services.length) {
+        prompt += `- HIZMETLER (sadece bunlari kullan):\n`
+        for (const s of c.services) {
+          prompt += `  * ${s.name}${s.duration ? ' (' + s.duration + ')' : ''}${s.price ? ': ' + s.price : ''}\n`
+        }
+      }
+      const as = (c.appointmentSettings as any) || {}
+      const areq: string[] = []
+      if (as.requireName) areq.push('Ad Soyad')
+      if (as.requirePhone) areq.push('Telefon')
+      if (as.requireService) areq.push('Hizmet')
+      if (as.requireDate) areq.push('Tarih')
+      if (as.requireTime) areq.push('Saat')
+      if (as.requireNote) areq.push('Not')
+      prompt += areq.length
+        ? `- RANDEVU ICIN ZORUNLU BILGILER: ${areq.join(', ')}. Bunlar tamamlanmadan randevuyu ONAYLAMA.\n`
+        : `- RANDEVU: Kullanici randevu istediginde HIZMETI ve TARIH/SAATI netlestir, ozetleyip onaylat.\n`
+    }
     if (canRes) prompt += `- REZERVASYON: Kullanici rezervasyon istediginde KISI SAYISI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Rezervasyonunuz olusturuldu" de.\n`
     prompt += `- İPTAL: Kullanici iptal istedigi once "Iptal sebebinizi ogrenebilir miyim?" diye sor. Sebebi alinca "Iptaliniz gerceklestirildi" de. Hangi randevu/siparis oldugunu anlamak icin tarih veya urun adi iste. Ornek: "Hangi tarihteki randevunuzu iptal etmek istiyorsunuz?"\n`
     if (c.systemPrompt) prompt += `- ${c.systemPrompt}\n`
