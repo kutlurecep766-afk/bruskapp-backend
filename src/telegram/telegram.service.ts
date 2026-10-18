@@ -399,7 +399,7 @@ export class TelegramService implements OnModuleInit {
   }
 
   async sendAdminAlert(title: string, message: string): Promise<boolean> {
-    const chatId = this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID')
+    const chatId = this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID') || this.config.get('TELEGRAM_CHAT_ID')
     if (!this.botToken || !chatId) return false
     const text = '🚨 <b>' + this.escapeHtml(title) + '</b>\n\n' + this.escapeHtml(message)
     return this.sendMessage(chatId, text)
@@ -416,7 +416,7 @@ export class TelegramService implements OnModuleInit {
   }
 
   async sendNotification(title: string, message: string): Promise<boolean> {
-    const chatId = this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID')
+    const chatId = this.config.get('TELEGRAM_NOTIFICATION_CHAT_ID') || this.config.get('TELEGRAM_CHAT_ID')
     if (!this.botToken || !chatId) return false
     const text = '🔔 <b>' + this.escapeHtml(title) + '</b>\n\n' + this.escapeHtml(message)
     return this.sendMessage(chatId, text)
