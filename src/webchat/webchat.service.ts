@@ -199,6 +199,16 @@ export class WebchatService {
     return t.startsWith(LEGACY_WELCOME) || t.includes('Bruskapp AI asistan')
   }
 
+  private isStalePlatformMessage(text: string): boolean {
+    const t = String(text || '')
+    if (!t) return false
+    if (this.isLegacyWelcome(t)) return true
+    if (/bruskapp/i.test(t)) return true
+    if (/yapay zeka destekli işletme otomasyon/i.test(t)) return true
+    if (/(CRM|chatbot|sesli asistan|QR menü|QR menu)/i.test(t) && /(çözüm|cozum|hizmet|sunuyoruz|platform)/i.test(t)) return true
+    return false
+  }
+
   async getConfig(tenantId: string): Promise<ChatBotConfig> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -379,10 +389,14 @@ export class WebchatService {
     const msgs: Message[] = [
       { role: 'system', content: TRAIN_SYSTEM + '\n' + JSON.stringify(currentForAI) },
     ]
-    const clean = (history || []).slice(-24).map(m => ({
-      role: (m.role === 'assistant' ? 'assistant' : 'user') as Message['role'],
-      content: String(m.content || '').slice(0, 4000),
-    }))
+    const isPlatform = (current.businessName || '').toLowerCase() === 'bruskapp'
+    const clean = (history || [])
+      .slice(-24)
+      .filter(m => !(m.role === 'assistant' && !isPlatform && this.isStalePlatformMessage(String(m.content || ''))))
+      .map(m => ({
+        role: (m.role === 'assistant' ? 'assistant' : 'user') as Message['role'],
+        content: String(m.content || '').slice(0, 4000),
+      }))
     msgs.push(...clean)
 
     const raw = await this.rawAI(msgs, 1800)
@@ -619,14 +633,19 @@ export class WebchatService {
           if (tenant) tid = tenant.id
         }
         if (tid) {
+          const tenantCfg = await this.prisma.tenant.findUnique({ where: { id: tid }, select: { webchatConfig: true } })
+          const bizName = String((tenantCfg?.webchatConfig as any)?.businessName || '').toLowerCase()
+          const isPlatform = bizName === 'bruskapp'
           const dbMsgs = await this.prisma.message.findMany({
             where: { tenantId: tid, from: from || sessionKey },
             orderBy: { createdAt: 'asc' },
             take: 20,
           })
           for (const msg of dbMsgs) {
+            const isAssistant = msg.direction !== 'incoming'
+            if (isAssistant && !isPlatform && this.isStalePlatformMessage(msg.content)) continue
             conv.messages.push({
-              role: msg.direction === 'incoming' ? 'user' : 'assistant',
+              role: isAssistant ? 'assistant' : 'user',
               content: msg.content,
             })
           }
