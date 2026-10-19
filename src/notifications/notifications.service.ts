@@ -81,8 +81,35 @@ export class NotificationsService {
     return ['şikayet', 'sikayet', 'berbat', 'kötü', 'kotu', 'rezalet', 'iade', 'memnun değil', 'memnun degil', 'yanlış', 'yanlis', 'geç geldi', 'gec geldi', 'soğuk', 'soguk', 'problem', 'sorun', 'şikayetçi', 'sikayetci', 'berbattı'].some(w => t.includes(w))
   }
 
+  private defaultPriorityKinds(): string[] {
+    return ['order', 'appointment', 'reservation', 'request']
+  }
+
+  private notificationKind(type: string): string {
+    const t = String(type || '').toLowerCase()
+    if (t.includes('order') || t.includes('sipariş') || t.includes('siparis')) return 'order'
+    if (t.includes('appointment') || t.includes('randevu')) return 'appointment'
+    if (t.includes('reservation') || t.includes('rezervasyon')) return 'reservation'
+    if (t.includes('request') || t.includes('talep') || t.includes('lead') || t.includes('offer') || t.includes('teklif')) return 'request'
+    if (t.includes('complaint') || t.includes('sikayet') || t.includes('şikayet')) return 'complaint'
+    return 'info'
+  }
+
+  private isRequestText(text: string): boolean {
+    const t = String(text || '').toLowerCase()
+    return ['sipariş', 'siparis', 'fiyat', 'ne kadar', 'ücret', 'ucret', 'kaç para', 'kac para', 'randevu', 'rezervasyon', 'teklif', 'bilgi almak', 'fiyat almak', 'istiyorum', 'istiyo', 'alabilir miyim', 'var mı', 'var mi', 'menü', 'menu', 'ürün', 'urun', 'hizmet', 'sipariş vermek'].some(w => t.includes(w))
+  }
+
   async getFeed(tenantId: string) {
     if (!tenantId) return { priority: [], secondary: [], aiFilled: false }
+
+    let priorityKinds = this.defaultPriorityKinds()
+    try {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
+      const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
+      const pk = cfg?.feedSettings?.priorityKinds
+      if (Array.isArray(pk) && pk.length) priorityKinds = pk.map((x: any) => String(x).toLowerCase())
+    } catch {}
 
     const [orders, appointments, reservations, leads, messages, notifications] = await Promise.all([
       this.prisma.order.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 12 }),
@@ -93,28 +120,25 @@ export class NotificationsService {
       this.prisma.notification.findMany({ where: { OR: [{ tenantId }, { tenantId: null }] }, orderBy: { createdAt: 'desc' }, take: 20 }),
     ])
 
-    const priority: any[] = []
-    const secondary: any[] = []
+    const items: any[] = []
 
     for (const o of orders) {
-      const items = Array.isArray(o.products) ? (o.products as any[]) : []
-      priority.push({
+      const prod = Array.isArray(o.products) ? (o.products as any[]) : []
+      items.push({
         id: 'order-' + o.id,
         kind: 'order',
-        priority: 1,
         title: 'Yeni Sipariş' + (o.trackingCode ? ' #' + o.trackingCode : ''),
-        summary: `${o.customerName} • ${Math.round(Number(o.totalAmount) || 0)} TL • ${items.length} ürün`,
+        summary: `${o.customerName} • ${Math.round(Number(o.totalAmount) || 0)} TL • ${prod.length} ürün`,
         createdAt: o.createdAt,
         read: o.status !== 'pending',
-        raw: `Siparis: ${o.customerName}, ${Math.round(Number(o.totalAmount) || 0)} TL, durum ${o.status}, urunler: ${items.map((i: any) => i?.name || i?.productName || '').filter(Boolean).join(', ')}`,
+        raw: `Siparis: ${o.customerName}, ${Math.round(Number(o.totalAmount) || 0)} TL, durum ${o.status}, urunler: ${prod.map((i: any) => i?.name || i?.productName || '').filter(Boolean).join(', ')}`,
       })
     }
     for (const a of appointments) {
       const d = a.date ? new Date(a.date).toLocaleDateString('tr-TR') : ''
-      priority.push({
+      items.push({
         id: 'appt-' + a.id,
         kind: 'appointment',
-        priority: 1,
         title: 'Yeni Randevu',
         summary: `${a.customerName} • ${a.service || 'Hizmet'} • ${d} ${a.time || ''}`.trim(),
         createdAt: a.createdAt,
@@ -124,10 +148,9 @@ export class NotificationsService {
     }
     for (const r of reservations) {
       const d = r.date ? new Date(r.date).toLocaleDateString('tr-TR') : ''
-      priority.push({
+      items.push({
         id: 'res-' + r.id,
         kind: 'reservation',
-        priority: 1,
         title: 'Yeni Rezervasyon',
         summary: `${r.customerName} • ${r.guests} kişi • ${d} ${r.time || ''}`.trim(),
         createdAt: r.createdAt,
@@ -136,13 +159,13 @@ export class NotificationsService {
       })
     }
 
+    // Sadece sikayet iceren mesajlar listelenir; normal mesajlar talep sayilmaz.
     for (const m of messages) {
-      const complaint = this.isComplaint(m.content)
-      secondary.push({
+      if (!this.isComplaint(m.content)) continue
+      items.push({
         id: 'msg-' + m.id,
-        kind: complaint ? 'complaint' : 'request',
-        priority: 2,
-        title: complaint ? 'Şikayet' : 'Talep',
+        kind: 'complaint',
+        title: 'Şikayet',
         summary: String(m.fromName || m.from || 'Müşteri') + ': ' + String(m.content || '').slice(0, 90),
         createdAt: m.createdAt,
         read: false,
@@ -150,10 +173,10 @@ export class NotificationsService {
       })
     }
     for (const l of leads) {
-      secondary.push({
+      if (!this.isRequestText(String(l.needs || ''))) continue
+      items.push({
         id: 'lead-' + l.id,
         kind: 'request',
-        priority: 2,
         title: 'Yeni Talep',
         summary: `${l.name || 'Ziyaretçi'}${l.phone ? ' • ' + l.phone : ''}${l.needs ? ' • ' + String(l.needs).slice(0, 60) : ''}`,
         createdAt: l.createdAt,
@@ -162,24 +185,21 @@ export class NotificationsService {
       })
     }
     for (const n of notifications) {
-      const t = String(n.type || '').toLowerCase()
-      const isP1 = t.includes('order') || t.includes('sipariş') || t.includes('siparis') || t.includes('appointment') || t.includes('randevu') || t.includes('reservation') || t.includes('rezervasyon')
-      const item = {
+      items.push({
         id: 'notif-' + n.id,
-        kind: isP1 ? 'order' : 'info',
-        priority: isP1 ? 1 : 2,
+        kind: this.notificationKind(n.type),
         title: n.title,
         summary: n.message,
         createdAt: n.createdAt,
         read: n.read,
         raw: n.title + ' ' + n.message,
-      }
-      if (isP1) priority.push(item)
-      else secondary.push(item)
+      })
     }
 
-    priority.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-    secondary.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    for (const it of items) it.priority = priorityKinds.includes(it.kind) ? 1 : 2
+
+    const priority = items.filter(i => i.priority === 1).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    const secondary = items.filter(i => i.priority === 2).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
 
     // AI ile ozet doldur (tek cagri)
     const candidates = [...priority.slice(0, 6), ...secondary.slice(0, 6)]

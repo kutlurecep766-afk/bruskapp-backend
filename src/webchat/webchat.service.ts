@@ -37,6 +37,10 @@ export interface FAQ {
   answer: string
 }
 
+export interface FeedSettings {
+  priorityKinds?: string[]
+}
+
 export interface UnknownQuestion {
   id: string
   question: string
@@ -65,6 +69,7 @@ export interface ChatBotConfig {
   systemPrompt: string
   knowledgeBase: string
   modes?: { orders?: boolean; appointments?: boolean; reservations?: boolean }
+  feedSettings?: FeedSettings
   unknownQuestions?: UnknownQuestion[]
 }
 
@@ -102,6 +107,7 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   faqs: [],
   systemPrompt: '',
   knowledgeBase: '',
+  feedSettings: { priorityKinds: ['order', 'appointment', 'reservation', 'request'] },
   unknownQuestions: [],
 }
 
@@ -114,6 +120,7 @@ Davranis:
 - Sicak, nazik, kisa ve net konus. Gereksiz uzun yazma.
 - Isletme sahibi bilgi verdikce eksik kalan ONEMLI bilgileri SORARAK netlestir: isletme adi, ne sattigi/aciklamasi, urun veya hizmet + fiyat, calisma saatleri, adres, telefon, siparis/teslimat/odeme kurallari, randevu kurallari, sik sorulan sorular.
 - Ayni bilgiyi tekrar sorma; sadece eksikleri sor. Kullanici "hepsi bu" derse ozet gec ve bitir.
+- BILDIRIM ONCELIGI: Isletme sahibine hangi bildirim turlerinin "Oncelikli" bolumune, hangilerinin "Diger" bolumune dusmesini istedigini sor. Turler: siparis (order), randevu (appointment), rezervasyon (reservation), talep (request), sikayet (complaint). Ornek: "siparis ve randevular oncelikli, sikayetler diger bolumde olsun". Ogrendiginde CONFIG bloguna feedSettings.priorityKinds yaz (ornek: "feedSettings": { "priorityKinds": ["order","appointment","request"] }). Bir tur verilmezse varsayilan oncelikli: order, appointment, reservation, request.
 - Emin olmadigin bilgiyi ASLA uydurma.
 - Markdown/isaretleme KULLANMA: yildiz (** veya *), kare (#), alt cizgi ve ters tirnak ile vurgulama YAPMA. Madde listesi verirken satirlari "- " yerine "• " ile baslat veya duz cumle halinde yaz.
 - Sen sadece bu isletmenin kurulum asistanisin. Bruskapp platformundan veya platform urunlerinden (CRM, chatbot, sesli asistan, QR menu vb.) ASLA bahsetme.
@@ -137,7 +144,8 @@ KONFIGURASYON BLOGU: Ogrendigin/degistirdigin bilgileri asagidaki formatta, ceva
   "appointmentSettings": { "requireName": true, "requirePhone": true, "requireDate": true, "requireTime": true },
   "faqs": [{ "question": "...", "answer": "..." }],
   "systemPrompt": "...",
-  "knowledgeBase": "..."
+  "knowledgeBase": "...",
+  "feedSettings": { "priorityKinds": ["order", "appointment", "reservation", "request"] }
 }
 [/CONFIG]
 
@@ -422,7 +430,7 @@ export class WebchatService {
       reply = reply.replace(m[0], '')
       try {
         const parsed = JSON.parse(m[1].trim())
-        const allowed = ['businessName', 'description', 'address', 'phone', 'hours', 'email', 'welcomeMessage', 'products', 'services', 'orderSettings', 'appointmentSettings', 'faqs', 'systemPrompt', 'knowledgeBase', 'modes']
+        const allowed = ['businessName', 'description', 'address', 'phone', 'hours', 'email', 'welcomeMessage', 'products', 'services', 'orderSettings', 'appointmentSettings', 'faqs', 'systemPrompt', 'knowledgeBase', 'modes', 'feedSettings']
         for (const k of allowed) {
           const v = parsed?.[k]
           if (v === undefined || v === null) continue
