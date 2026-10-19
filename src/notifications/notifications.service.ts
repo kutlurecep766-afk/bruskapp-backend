@@ -85,6 +85,10 @@ export class NotificationsService {
     return ['order', 'appointment', 'reservation', 'request']
   }
 
+  private defaultIncludeKinds(): string[] {
+    return ['order', 'appointment', 'reservation', 'request', 'complaint', 'question']
+  }
+
   private notificationKind(type: string): string {
     const t = String(type || '').toLowerCase()
     if (t.includes('order') || t.includes('sipariş') || t.includes('siparis')) return 'order'
@@ -104,11 +108,21 @@ export class NotificationsService {
     if (!tenantId) return { priority: [], secondary: [], aiFilled: false }
 
     let priorityKinds = this.defaultPriorityKinds()
+    let includeKinds = this.defaultIncludeKinds()
+    let unknownQuestions: any[] = []
     try {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
       const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
       const pk = cfg?.feedSettings?.priorityKinds
       if (Array.isArray(pk) && pk.length) priorityKinds = pk.map((x: any) => String(x).toLowerCase())
+      const ik = cfg?.feedSettings?.includeKinds
+      if (Array.isArray(ik) && ik.length) includeKinds = ik.map((x: any) => String(x).toLowerCase())
+      if (Array.isArray(cfg?.unknownQuestions)) {
+        unknownQuestions = cfg.unknownQuestions
+          .filter((q: any) => !q.answered && !q.dismissed)
+          .sort((a: any, b: any) => (b.count || 1) - (a.count || 1) || +new Date(b.createdAt || 0) - +new Date(a.createdAt || 0))
+          .slice(0, 10)
+      }
     } catch {}
 
     const [orders, appointments, reservations, leads, messages, notifications] = await Promise.all([
@@ -184,6 +198,17 @@ export class NotificationsService {
         raw: `Talep: ${l.name}, tel ${l.phone}, ihtiyac ${l.needs}`,
       })
     }
+    for (const q of unknownQuestions) {
+      items.push({
+        id: 'q-' + q.id,
+        kind: 'question',
+        title: 'Sık Sorulan Soru',
+        summary: String(q.question || '').slice(0, 120),
+        createdAt: q.createdAt || new Date().toISOString(),
+        read: false,
+        raw: `Sik sorulan soru (${q.count || 1} kez): ${q.question}${q.context ? ' | Konusma: ' + String(q.context).slice(0, 200) : ''}`,
+      })
+    }
     for (const n of notifications) {
       items.push({
         id: 'notif-' + n.id,
@@ -196,10 +221,11 @@ export class NotificationsService {
       })
     }
 
-    for (const it of items) it.priority = priorityKinds.includes(it.kind) ? 1 : 2
+    const included = items.filter(i => includeKinds.includes(i.kind))
+    for (const it of included) it.priority = priorityKinds.includes(it.kind) ? 1 : 2
 
-    const priority = items.filter(i => i.priority === 1).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-    const secondary = items.filter(i => i.priority === 2).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    const priority = included.filter(i => i.priority === 1).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    const secondary = included.filter(i => i.priority === 2).sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
 
     // AI ile ozet doldur (tek cagri)
     const candidates = [...priority.slice(0, 6), ...secondary.slice(0, 6)]
@@ -210,7 +236,7 @@ export class NotificationsService {
       delete item.raw
     }
 
-    return { priority, secondary, aiFilled }
+    return { priority, secondary, aiFilled, settings: { includeKinds, priorityKinds } }
   }
 
   private async aiSummarize(items: { id: string; kind: string; text: string }[]): Promise<Record<string, string>> {

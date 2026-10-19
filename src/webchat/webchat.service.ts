@@ -39,6 +39,7 @@ export interface FAQ {
 
 export interface FeedSettings {
   priorityKinds?: string[]
+  includeKinds?: string[]
 }
 
 export interface UnknownQuestion {
@@ -49,6 +50,7 @@ export interface UnknownQuestion {
   answered: boolean
   answer?: string
   dismissed?: boolean
+  context?: string
   createdAt: string
   answeredAt?: string
 }
@@ -71,6 +73,9 @@ export interface ChatBotConfig {
   modes?: { orders?: boolean; appointments?: boolean; reservations?: boolean }
   feedSettings?: FeedSettings
   unknownQuestions?: UnknownQuestion[]
+  configUpdatedAt?: string
+  changeLog?: { at: string; note: string }[]
+  memories?: Record<string, { summary: string; at: string }>
 }
 
 interface Message {
@@ -107,7 +112,10 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   faqs: [],
   systemPrompt: '',
   knowledgeBase: '',
-  feedSettings: { priorityKinds: ['order', 'appointment', 'reservation', 'request'] },
+  feedSettings: {
+    priorityKinds: ['order', 'appointment', 'reservation', 'request'],
+    includeKinds: ['order', 'appointment', 'reservation', 'request', 'complaint', 'question'],
+  },
   unknownQuestions: [],
 }
 
@@ -120,7 +128,7 @@ Davranis:
 - Sicak, nazik, kisa ve net konus. Gereksiz uzun yazma.
 - Isletme sahibi bilgi verdikce eksik kalan ONEMLI bilgileri SORARAK netlestir: isletme adi, ne sattigi/aciklamasi, urun veya hizmet + fiyat, calisma saatleri, adres, telefon, siparis/teslimat/odeme kurallari, randevu kurallari, sik sorulan sorular.
 - Ayni bilgiyi tekrar sorma; sadece eksikleri sor. Kullanici "hepsi bu" derse ozet gec ve bitir.
-- BILDIRIM ONCELIGI: Isletme sahibine hangi bildirim turlerinin "Oncelikli" bolumune, hangilerinin "Diger" bolumune dusmesini istedigini sor. Turler: siparis (order), randevu (appointment), rezervasyon (reservation), talep (request), sikayet (complaint). Ornek: "siparis ve randevular oncelikli, sikayetler diger bolumde olsun". Ogrendiginde CONFIG bloguna feedSettings.priorityKinds yaz (ornek: "feedSettings": { "priorityKinds": ["order","appointment","request"] }). Bir tur verilmezse varsayilan oncelikli: order, appointment, reservation, request.
+- BILDIRIMLERIM AYARI: Isletme sahibine "Bildirimlerim" sayfasina hangi turlerin dusecegini (includeKinds) ve hangilerinin "Oncelikli" bolumunde gorunecegini (priorityKinds) sor. Turler: siparis (order), randevu (appointment), rezervasyon (reservation), talep (request), sikayet (complaint), en cok sorulan soru (question). Ornek istek: "siparisler ve en cok sorulan sorular dussun, siparisler oncelikli olsun" → "feedSettings": { "includeKinds": ["order","question"], "priorityKinds": ["order"] }. includeKinds sayfada gorunecek turlerdir; priorityKinds oncelikli bolumde gorunecek turlerdir ve includeKinds icinde olmalidir. Verilmezse varsayilan includeKinds: order, appointment, reservation, request, complaint, question; varsayilan priorityKinds: order, appointment, reservation, request.
 - Emin olmadigin bilgiyi ASLA uydurma.
 - Markdown/isaretleme KULLANMA: yildiz (** veya *), kare (#), alt cizgi ve ters tirnak ile vurgulama YAPMA. Madde listesi verirken satirlari "- " yerine "• " ile baslat veya duz cumle halinde yaz.
 - Sen sadece bu isletmenin kurulum asistanisin. Bruskapp platformundan veya platform urunlerinden (CRM, chatbot, sesli asistan, QR menu vb.) ASLA bahsetme.
@@ -145,7 +153,7 @@ KONFIGURASYON BLOGU: Ogrendigin/degistirdigin bilgileri asagidaki formatta, ceva
   "faqs": [{ "question": "...", "answer": "..." }],
   "systemPrompt": "...",
   "knowledgeBase": "...",
-  "feedSettings": { "priorityKinds": ["order", "appointment", "reservation", "request"] }
+  "feedSettings": { "includeKinds": ["order", "appointment", "reservation", "request", "complaint", "question"], "priorityKinds": ["order", "appointment", "reservation", "request"] }
 }
 [/CONFIG]
 
@@ -217,6 +225,32 @@ export class WebchatService {
     return false
   }
 
+  private nowTr(): string {
+    try {
+      return new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date())
+    } catch {
+      return new Date().toLocaleString('tr-TR')
+    }
+  }
+
+  private fmtDate(iso?: string): string {
+    if (!iso) return ''
+    try {
+      return new Intl.DateTimeFormat('tr-TR', { timeZone: 'Europe/Istanbul', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date(iso))
+    } catch {
+      return String(iso)
+    }
+  }
+
+  private recentContext(conv?: Conversation): string {
+    if (!conv || !conv.messages?.length) return ''
+    return conv.messages
+      .slice(-6)
+      .map(m => `${m.role === 'user' ? 'Müşteri' : 'Asistan'}: ${String(m.content || '').slice(0, 160)}`)
+      .join('\n')
+      .slice(0, 800)
+  }
+
   async getConfig(tenantId: string): Promise<ChatBotConfig> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -256,6 +290,20 @@ export class WebchatService {
       (updates as any).knowledgeBase = current.knowledgeBase
     }
     const merged = { ...current, ...updates }
+    const fieldLabels: Record<string, string> = {
+      businessName: 'İşletme adı', description: 'Açıklama', address: 'Adres', phone: 'Telefon',
+      hours: 'Çalışma saatleri', email: 'E-posta', welcomeMessage: 'Karşılama mesajı',
+      products: 'Ürünler', services: 'Hizmetler', orderSettings: 'Sipariş kuralları',
+      appointmentSettings: 'Randevu kuralları', faqs: 'Sık sorulan sorular', systemPrompt: 'Sistem notu',
+      knowledgeBase: 'Bilgi havuzu', modes: 'Yetenekler', feedSettings: 'Bildirim ayarları',
+    }
+    const changed = Object.keys(updates).filter(k => !['changeLog', 'configUpdatedAt', 'memories', 'unknownQuestions'].includes(k))
+    if (changed.length) {
+      const nowIso = new Date().toISOString()
+      const prevLog = Array.isArray((current as any).changeLog) ? (current as any).changeLog : []
+      ;(merged as any).changeLog = [...prevLog, { at: nowIso, note: 'Güncellenen alanlar: ' + changed.map(k => fieldLabels[k] || k).join(', ') }].slice(-30)
+      ;(merged as any).configUpdatedAt = nowIso
+    }
     const dataUpdate: any = { webchatConfig: merged as any }
     if (updates.modes) {
       const t2 = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { features: true } })
@@ -270,6 +318,32 @@ export class WebchatService {
       data: dataUpdate,
     })
     return merged
+  }
+
+  private async updateMemory(tenantId: string, sessionKey: string, conv: Conversation) {
+    try {
+      if (!this.aiApiKey || !tenantId || !sessionKey) return
+      if (!conv?.messages || conv.messages.length < 6) return
+      if (conv.messages.length % 4 !== 0) return
+      const transcript = conv.messages.slice(-24).map(m => `${m.role === 'user' ? 'Müşteri' : 'Asistan'}: ${String(m.content || '').slice(0, 300)}`).join('\n').slice(0, 4000)
+      const raw = await this.rawAI([
+        { role: 'system', content: 'Asagidaki musteri konusmasini Turkce, en fazla 2 cumle ve en fazla 30 kelime ile ozetle. Sadece musteri hakkinda kalici bilgileri yaz (ad, tercih, talep, sikayet, hangi konulari konustugu). Baska yazi ekleme.' },
+        { role: 'user', content: transcript },
+      ], 200)
+      const summary = this.stripMarkup(String(raw || '')).trim().slice(0, 500)
+      if (!summary) return
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
+      const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? { ...tenant.webchatConfig } : {}
+      const memories: any = (cfg.memories && typeof cfg.memories === 'object') ? { ...cfg.memories } : {}
+      memories[sessionKey] = { summary, at: new Date().toISOString() }
+      const keys = Object.keys(memories)
+      if (keys.length > 200) {
+        keys.sort((a, b) => new Date(memories[a]?.at || 0).getTime() - new Date(memories[b]?.at || 0).getTime())
+        for (const k of keys.slice(0, keys.length - 200)) delete memories[k]
+      }
+      cfg.memories = memories
+      await this.prisma.tenant.update({ where: { id: tenantId }, data: { webchatConfig: cfg as any } })
+    } catch {}
   }
 
   async resetConfig(tenantId: string): Promise<ChatBotConfig> {
@@ -294,10 +368,11 @@ export class WebchatService {
     ].some(w => t.includes(w))
   }
 
-  private async recordUnknownQuestion(tenantId: string, question: string, platform = 'webchat') {
+  private async recordUnknownQuestion(tenantId: string, question: string, platform = 'webchat', context?: string) {
     try {
       const q = String(question || '').trim().slice(0, 300)
       if (q.length < 6) return
+      const ctx = context ? String(context).slice(0, 800) : undefined
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
       const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
       const list: UnknownQuestion[] = Array.isArray(cfg.unknownQuestions) ? [...cfg.unknownQuestions] : []
@@ -305,6 +380,7 @@ export class WebchatService {
       const existing = list.find(x => !x.answered && String(x.question || '').toLowerCase().trim() === norm)
       if (existing) {
         existing.count = (existing.count || 1) + 1
+        if (!existing.context && ctx) existing.context = ctx
       } else {
         list.push({
           id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -312,6 +388,7 @@ export class WebchatService {
           platform,
           count: 1,
           answered: false,
+          context: ctx,
           createdAt: new Date().toISOString(),
         })
       }
@@ -325,10 +402,10 @@ export class WebchatService {
     }
   }
 
-  private maybeRecordUnknown(tenantId: string | null | undefined, question: string, response: string, platform = 'webchat', explicit = false) {
+  private maybeRecordUnknown(tenantId: string | null | undefined, question: string, response: string, platform = 'webchat', explicit = false, context?: string) {
     if (!tenantId || (!response && !explicit)) return
     if (!explicit && !this.isUnknownResponse(response)) return
-    this.recordUnknownQuestion(tenantId, question, platform).catch(() => {})
+    this.recordUnknownQuestion(tenantId, question, platform, context).catch(() => {})
   }
 
   private stripUnknownFlag(text: string): { text: string; unknown: boolean } {
@@ -757,7 +834,8 @@ export class WebchatService {
         this.messagesService?.create({ platform: 'webchat', from: sessionId, content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
       }
       await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
-      this.maybeRecordUnknown(tid, cleaned, response, 'webchat', uf.unknown)
+      this.maybeRecordUnknown(tid, cleaned, response, 'webchat', uf.unknown, this.recentContext(conv))
+      if (tid) this.updateMemory(tid, sessionId, conv).catch(() => {})
       await this.detectIntent(sessionId, cleaned, uf.text, conv).catch(() => {}); return response
     }
     const conv = await this.getOrCreateConversation(sessionId, tid || undefined)
@@ -775,7 +853,8 @@ export class WebchatService {
       this.messagesService?.create({ platform: 'webchat', from: sessionId, content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
     }
     await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
-    this.maybeRecordUnknown(tid, cleaned, response, 'webchat', uf.unknown)
+    this.maybeRecordUnknown(tid, cleaned, response, 'webchat', uf.unknown, this.recentContext(conv))
+    if (tid) this.updateMemory(tid, sessionId, conv).catch(() => {})
     await this.detectIntent(sessionId, cleaned, uf.text, conv).catch(() => {}); return response
   }
 
@@ -810,15 +889,15 @@ export class WebchatService {
       if (customerName) {
         // Aktif siparisler
         const orders = await this.prisma.order.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
-        if (orders.length > 0) ctx += `- Aktif siparisleri: ${orders.map(o => `#${o.id} (${(o.products as any[])?.[0]?.name || 'urun'} - ${o.createdAt.toLocaleDateString('tr-TR')})`).join(', ')}\n`
+        if (orders.length > 0) ctx += `- Aktif siparisleri: ${orders.map(o => `#${o.id} (${(o.products as any[])?.[0]?.name || 'urun'} - olusturuldu ${this.fmtDate(o.createdAt.toISOString())})`).join(', ')}\n`
 
         // Aktif randevular
         const appointments = await this.prisma.appointment.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
-        if (appointments.length > 0) ctx += `- Aktif randevulari: ${appointments.map(a => `${a.service || 'Randevu'} (${new Date(a.date).toLocaleDateString('tr-TR')} ${a.time || ''})`).join(', ')}\n`
+        if (appointments.length > 0) ctx += `- Aktif randevulari: ${appointments.map(a => `${a.service || 'Randevu'} (${this.fmtDate(new Date(a.date).toISOString())}${a.time ? ' ' + a.time : ''}, olusturuldu ${this.fmtDate(a.createdAt.toISOString())})`).join(', ')}\n`
 
         // Aktif rezervasyonlar
         const reservations = await this.prisma.reservation.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
-        if (reservations.length > 0) ctx += `- Aktif rezervasyonlari: ${reservations.map(r => `${r.guests} kisilik (${new Date(r.date).toLocaleDateString('tr-TR')} ${r.time || ''})`).join(', ')}\n`
+        if (reservations.length > 0) ctx += `- Aktif rezervasyonlari: ${reservations.map(r => `${r.guests} kisilik (${this.fmtDate(new Date(r.date).toISOString())}${r.time ? ' ' + r.time : ''}, olusturuldu ${this.fmtDate(r.createdAt.toISOString())})`).join(', ')}\n`
 
         if (orders.length === 0 && appointments.length === 0 && reservations.length === 0) {
           ctx += '- Bu kullanicinin aktif siparis, randevu veya rezervasyonu bulunmamaktadir.\n'
@@ -835,6 +914,7 @@ export class WebchatService {
   private buildBaseSystem(config: ChatBotConfig): string {
     const c = config
     let prompt = `Sen ${c.businessName} işletmesinin yapay zeka asistanısın.\n`
+    prompt += `Şu an: ${this.nowTr()} (Türkiye saati). "Bugün", "yarın", "dün", "ne zaman" gibi tarih/saat ifadelerini hep bu ana göre yorumla.\n`
     const bizInfo: string[] = []
     if (c.description) bizInfo.push(`İşletme: ${c.description}`)
     if (c.address) bizInfo.push(`Adres: ${c.address}`)
@@ -918,6 +998,11 @@ export class WebchatService {
     if (canRes) prompt += `- REZERVASYON: Kullanici rezervasyon istediginde KISI SAYISI ve TARIH/SAATI netlestir, ozetleyip onaylat, sonra "Rezervasyonunuz olusturuldu" de.\n`
     prompt += `- İPTAL: Kullanici iptal istedigi once "Iptal sebebinizi ogrenebilir miyim?" diye sor. Sebebi alinca "Iptaliniz gerceklestirildi" de. Hangi randevu/siparis oldugunu anlamak icin tarih veya urun adi iste. Ornek: "Hangi tarihteki randevunuzu iptal etmek istiyorsunuz?"\n`
     if (c.systemPrompt) prompt += `- ${c.systemPrompt}\n`
+    if (c.configUpdatedAt) prompt += `- İşletme bilgileri en son ${this.fmtDate(c.configUpdatedAt)} tarihinde güncellendi.\n`
+    if (Array.isArray(c.changeLog) && c.changeLog.length) {
+      prompt += `- Son güncellemeler:\n`
+      for (const e of c.changeLog.slice(-5).reverse()) prompt += `  * ${this.fmtDate(e.at)}: ${e.note}\n`
+    }
     if (c.knowledgeBase) {
       prompt += `\nBILGI HAVUZU:\n${c.knowledgeBase}\n`
     }
@@ -1139,11 +1224,12 @@ export class WebchatService {
       const conv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       conv.messages.push({ role: 'user', content: short })
       conv.lastActivity = Date.now()
-      const rawResponse = await this.generateResponse(short, conv, '', short, tenantId)
+      const rawResponse = await this.generateResponse(short, conv, sessionKey, short, tenantId)
       const uf = this.stripUnknownFlag(rawResponse || '')
       const response = this.stripCustomerBlock(this.stripOrderBlock(uf.text)) || null
       if (response) conv.messages.push({ role: 'assistant', content: response })
-      this.maybeRecordUnknown(tenantId, cleaned, response || '', platform, uf.unknown)
+      this.maybeRecordUnknown(tenantId, cleaned, response || '', platform, uf.unknown, this.recentContext(conv))
+      this.updateMemory(tenantId, sessionKey, conv).catch(() => {})
       return response
     }
 
@@ -1172,7 +1258,7 @@ export class WebchatService {
       }
     } catch {}
     const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
-    const rawResponse = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
+    const rawResponse = await this.generateResponse(enhanced, conv, sessionKey, enhanced, tenantId)
     if (!rawResponse) return null
     const uf = this.stripUnknownFlag(rawResponse)
     const blockNow = this.parseOrderBlock(uf.text)
@@ -1225,7 +1311,8 @@ export class WebchatService {
         if (this.reservationsService) this.reservationsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '20:00', guests: 2 }).catch(() => {})
       }
     } catch {}
-    this.maybeRecordUnknown(tenantId, cleaned, response, platform, uf.unknown)
+    this.maybeRecordUnknown(tenantId, cleaned, response, platform, uf.unknown, this.recentContext(conv))
+    this.updateMemory(tenantId, sessionKey, conv).catch(() => {})
     return response
   }
 
@@ -1248,6 +1335,11 @@ export class WebchatService {
     const userContext = await this.getUserRecordsContext(tenantId, sessionId, conv).catch(() => null)
     if (userContext) {
       config = { ...config, systemPrompt: (config.systemPrompt || '') + '\n' + userContext }
+    }
+
+    // Uzun sureli musteri hafizasi (onceki konusmalardan ozet)
+    if (tenantId && sessionId && config.memories && config.memories[sessionId]?.summary) {
+      config = { ...config, systemPrompt: (config.systemPrompt || '') + '\nMÜŞTERİ HAFIZASI (önceki konuşmalardan): ' + config.memories[sessionId].summary }
     }
 
     const aiResponse = await this.callAI(conv.messages, config)
