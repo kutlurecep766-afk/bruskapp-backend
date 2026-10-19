@@ -579,7 +579,7 @@ export class WebchatService {
 
   private parseApptBlock(text: string): { name?: string; phone?: string; service?: string; date?: string; time?: string; note?: string } | null {
     const raw = String(text || '')
-    const m = raw.match(/\[(?:RANDEVU|APPOINTMENT)\]([\s\S]*?)\[\/(?:RANDEVU|APPOINTMENT)\]/i)
+    const m = raw.match(/\[\s*(?:RANDEVU|APPOINTMENT)\s*\]([\s\S]*?)\[\s*\/\s*(?:RANDEVU|APPOINTMENT)\s*\]/i)
     if (!m) return null
     const out: any = {}
     for (const line of m[1].split('\n')) {
@@ -601,7 +601,7 @@ export class WebchatService {
   }
 
   private stripApptBlock(text: string): string {
-    return String(text || '').replace(/\[(?:RANDEVU|APPOINTMENT)\][\s\S]*?\[\/(?:RANDEVU|APPOINTMENT)\]/gi, '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim()
+    return String(text || '').replace(/\[\s*(?:RANDEVU|APPOINTMENT)\s*\][\s\S]*?\[\s*\/\s*(?:RANDEVU|APPOINTMENT)\s*\]/gi, '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+$/gm, '').trim()
   }
 
   private parseTrDate(s: string | undefined): Date | null {
@@ -617,7 +617,7 @@ export class WebchatService {
 
   private parseOrderBlock(text: string): { name: string; quantity: number }[] {
     const raw = String(text || '')
-    const m = raw.match(/\[(?:SIPARIS|SIPARIŞ|ORDER)\]([\s\S]*?)\[\/(?:SIPARIS|SIPARIŞ|ORDER)\]/i)
+    const m = raw.match(/\[\s*(?:S[İIiı]PAR[İIiı][SŞsş]|ORDER)\s*\]([\s\S]*?)\[\s*\/\s*(?:S[İIiı]PAR[İIiı][SŞsş]|ORDER)\s*\]/i)
     if (!m) return []
     const out: { name: string; quantity: number }[] = []
     for (const line of m[1].split('\n')) {
@@ -631,7 +631,7 @@ export class WebchatService {
 
   private stripOrderBlock(text: string): string {
     return String(text || '')
-      .replace(/\[(?:SIPARIS|SIPARIŞ|ORDER)\][\s\S]*?\[\/(?:SIPARIS|SIPARIŞ|ORDER)\]/gi, '')
+      .replace(/\[\s*(?:S[İIiı]PAR[İIiı][SŞsş]|ORDER)\s*\][\s\S]*?\[\s*\/\s*(?:S[İIiı]PAR[İIiı][SŞsş]|ORDER)\s*\]/gi, '')
       .replace(/\n{3,}/g, '\n\n')
       .replace(/[ \t]+$/gm, '')
       .trim()
@@ -639,16 +639,16 @@ export class WebchatService {
 
   private parseCustomerBlock(text: string): Record<string, string> {
     const raw = String(text || '')
-    const m = raw.match(/\[MUSTERI\]([\s\S]*?)\[\/MUSTERI\]/i)
+    const m = raw.match(/\[\s*M[UÜuü][SŞsş]T[Ee]R[İIiı]\s*\]([\s\S]*?)\[\s*\/\s*M[UÜuü][SŞsş]T[Ee]R[İIiı]\s*\]/i)
     if (!m) return {}
     const out: Record<string, string> = {}
     for (const line of m[1].split('\n')) {
-      const mm = line.match(/^\s*(ad|isim|telefon|adres|konum|not|notlar)\s*:\s*(.+?)\s*$/i)
+      const mm = line.match(/^\s*(ad\s*soyad|adsoyad|ad|isim|telefon|tel|adres|konum|not|notlar)\s*:\s*(.+?)\s*$/i)
       if (!mm) continue
       const key = mm[1].toLowerCase()
       const val = mm[2].trim()
       if (!val) continue
-      const k = (key === 'isim' ? 'ad' : key === 'notlar' ? 'not' : key)
+      const k = /^(ad\s*soyad|adsoyad|isim)$/.test(key) ? 'ad' : key === 'notlar' ? 'not' : key === 'tel' ? 'telefon' : key
       out[k] = val
     }
     return out
@@ -656,7 +656,7 @@ export class WebchatService {
 
   private stripCustomerBlock(text: string): string {
     return String(text || '')
-      .replace(/\[MUSTERI\][\s\S]*?\[\/MUSTERI\]/gi, '')
+      .replace(/\[\s*M[UÜuü][SŞsş]T[Ee]R[İIiı]\s*\][\s\S]*?\[\s*\/\s*M[UÜuü][SŞsş]T[Ee]R[İIiı]\s*\]/gi, '')
       .replace(/\n{3,}/g, '\n\n')
       .replace(/[ \t]+$/gm, '')
       .trim()
