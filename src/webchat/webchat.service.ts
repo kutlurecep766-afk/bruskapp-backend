@@ -253,26 +253,54 @@ export class WebchatService {
       .slice(0, 800)
   }
 
+  private formatPriceStr(v: any): string {
+    if (v === null || v === undefined || v === '') return ''
+    if (typeof v === 'number') return `${Math.round(v)} TL`
+    const s = String(v).trim()
+    if (!s) return ''
+    if (/tl|₺/i.test(s)) return s
+    return `${s} TL`
+  }
+
+  private storefrontProducts(sf: any): Product[] {
+    const arr = Array.isArray(sf?.products) ? sf.products : []
+    return arr
+      .filter((p: any) => p && p.name)
+      .map((p: any) => ({
+        name: String(p.name),
+        price: this.formatPriceStr(p.price),
+        description: String(p.description || ''),
+        unit: p.weight ? String(p.weight) : undefined,
+        soldOut: p.status ? String(p.status).toLowerCase() !== 'active' : false,
+      }))
+  }
+
   async getConfig(tenantId: string): Promise<ChatBotConfig> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { webchatConfig: true, name: true },
+      select: { webchatConfig: true, storefrontConfig: true, name: true },
     })
 
+    let cfg: ChatBotConfig
     if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
-      return this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
+      cfg = this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
+    } else {
+      cfg = this.normalizeConfig(this.defaultConfig(tenant?.name))
     }
-
-    return this.normalizeConfig(this.defaultConfig(tenant?.name))
+    const sfProducts = this.storefrontProducts((tenant as any)?.storefrontConfig)
+    if (sfProducts.length) cfg.products = sfProducts
+    return cfg
   }
   async getPublicConfig(slug: string): Promise<{ businessName: string; welcomeMessage: string; products: any[] }> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { slug },
-      select: { webchatConfig: true, name: true },
+      select: { webchatConfig: true, storefrontConfig: true, name: true },
     })
     const cfg = this.normalizeConfig(tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0
       ? { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
       : this.defaultConfig(tenant?.name))
+    const sfProducts = this.storefrontProducts((tenant as any)?.storefrontConfig)
+    if (sfProducts.length) cfg.products = sfProducts
     return {
       businessName: cfg.businessName,
       welcomeMessage: cfg.welcomeMessage,
@@ -283,7 +311,7 @@ export class WebchatService {
   async updateConfig(tenantId: string, updates: Partial<ChatBotConfig>): Promise<ChatBotConfig> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
-      select: { webchatConfig: true, name: true },
+      select: { webchatConfig: true, storefrontConfig: true, name: true },
     })
     const current = this.normalizeConfig(tenant?.webchatConfig && typeof tenant.webchatConfig === 'object'
       ? { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
@@ -314,6 +342,25 @@ export class WebchatService {
       if (updates.modes.appointments !== undefined) feats.appointments = !!updates.modes.appointments
       if (updates.modes.reservations !== undefined) feats.reservations = !!updates.modes.reservations
       dataUpdate.features = feats
+    }
+    if (Array.isArray(updates.products)) {
+      const sf: any = (tenant?.storefrontConfig && typeof tenant.storefrontConfig === 'object') ? tenant.storefrontConfig : {}
+      const existing: any[] = Array.isArray(sf.products) ? sf.products : []
+      const mapped = updates.products.map((p: any) => {
+        const prev = existing.find((e: any) => String(e.name || '').toLowerCase().trim() === String(p.name || '').toLowerCase().trim())
+        return {
+          id: prev?.id || (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)),
+          name: String(p.name || ''),
+          price: this.parsePriceValue(p.price),
+          description: String(p.description || ''),
+          status: p.soldOut ? 'inactive' : 'active',
+          image: prev?.image,
+          category: prev?.category,
+          weight: p.unit || prev?.weight,
+          originalPrice: prev?.originalPrice,
+        }
+      })
+      dataUpdate.storefrontConfig = { ...sf, products: mapped }
     }
     await this.prisma.tenant.update({
       where: { id: tenantId },
@@ -897,12 +944,17 @@ export class WebchatService {
   private async loadConfigForSlug(slug: string): Promise<ChatBotConfig> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { slug },
-      select: { webchatConfig: true, name: true },
+      select: { webchatConfig: true, storefrontConfig: true, name: true },
     })
+    let cfg: ChatBotConfig
     if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
-      return this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
+      cfg = this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
+    } else {
+      cfg = this.normalizeConfig(this.defaultConfig(tenant?.name))
     }
-    return this.normalizeConfig(this.defaultConfig(tenant?.name))
+    const sfProducts = this.storefrontProducts((tenant as any)?.storefrontConfig)
+    if (sfProducts.length) cfg.products = sfProducts
+    return cfg
   }
 
   private async getUserRecordsContext(tenantId?: string, sessionId?: string, conv?: Conversation): Promise<string | null> {
@@ -1023,6 +1075,7 @@ export class WebchatService {
     prompt += `- Bilgi havuzunda cevap yoksa KENDI profesyonel ve nazik tarzinla cevap ver, kisa ve yardimci ol. "Bu konuda su an bilgim yok" gibi kalip cevaplar KULLANMA.\n`
     prompt += `- ONEMLI: Bilgi havuzunda ve isletme ayarlarinda sorunun NET cevabi YOKSA, cevabinin EN SONUNA aynen [BILMIYORUM] etiketini ekle. Bu etiket musteriye gosterilmez; isletme sahibinin ogrenmesi icindir. Cevap VARSA bu etiketi ASLA ekleme.\n`
     prompt += `- KESINLIKLE kendi bilgini uydurma, bilgi havuzundaki bilgileri ve isletme ayarlarini kullan.\n`
+    prompt += `- FIYAT: Urun/hizmet fiyatlari icin SADECE "URUNLER" listesindeki GUNCEL fiyatlari kullan. Bilgi havuzunda veya eski notlarda gecen fiyatlari YOK SAY; fiyat uydurma. Guncel fiyat listede yoksa fiyat verme.\n`
     prompt += `- KESINLIKLE su tür genel cevaplari VERME: "Mesajiniz alindi", "En kisa surede donus yapilacaktir", "Iletilecektir", "Gerekli yonlendirme yapilacaktir".\n`
     prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
     const modes: any = c.modes || {}
