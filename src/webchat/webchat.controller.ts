@@ -47,4 +47,22 @@ export class WebchatController {
     const tenantId = req.user?.tenantId || 'default'
     return this.webchat.resetConfig(tenantId)
   }
+
+  @Get('unknown-questions')
+  async unknownQuestions(@Req() req: any) {
+    const tenantId = req.user?.tenantId || 'default'
+    return this.webchat.getUnknownQuestions(tenantId)
+  }
+
+  @Post('unknown-questions/answer')
+  async answerUnknown(@Req() req: any, @Body() body: { id: string; answer: string }) {
+    const tenantId = req.user?.tenantId || 'default'
+    return this.webchat.answerUnknownQuestion(tenantId, body?.id, body?.answer)
+  }
+
+  @Post('unknown-questions/dismiss')
+  async dismissUnknown(@Req() req: any, @Body() body: { id: string }) {
+    const tenantId = req.user?.tenantId || 'default'
+    return this.webchat.dismissUnknownQuestion(tenantId, body?.id)
+  }
 }

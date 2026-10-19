@@ -37,6 +37,18 @@ export interface FAQ {
   answer: string
 }
 
+export interface UnknownQuestion {
+  id: string
+  question: string
+  platform?: string
+  count: number
+  answered: boolean
+  answer?: string
+  dismissed?: boolean
+  createdAt: string
+  answeredAt?: string
+}
+
 export interface ChatBotConfig {
   businessName: string
   description: string
@@ -53,6 +65,7 @@ export interface ChatBotConfig {
   systemPrompt: string
   knowledgeBase: string
   modes?: { orders?: boolean; appointments?: boolean; reservations?: boolean }
+  unknownQuestions?: UnknownQuestion[]
 }
 
 interface Message {
@@ -89,6 +102,7 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   faqs: [],
   systemPrompt: '',
   knowledgeBase: '',
+  unknownQuestions: [],
 }
 
 const TRAIN_SYSTEM = `Sen Bruskapp platformunun yapay zeka KURULUM ASISTANISIN.
@@ -227,10 +241,118 @@ export class WebchatService {
     return this.getConfig(tenantId)
   }
 
+  private isUnknownResponse(response: string): boolean {
+    if (!response) return false
+    const t = response.toLowerCase()
+    return [
+      'bilmiyorum', 'bilgi sahibi değilim', 'bilgim yok', 'bu konuda bilgi',
+      'emin değilim', 'yardımcı olamıyorum', 'cevap veremiyorum',
+      'bilgi bulunmuyor', 'bilgilerimde yok', 'kayıtlı bilgi',
+    ].some(w => t.includes(w))
+  }
+
+  private async recordUnknownQuestion(tenantId: string, question: string, platform = 'webchat') {
+    try {
+      const q = String(question || '').trim().slice(0, 300)
+      if (q.length < 6) return
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
+      const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
+      const list: UnknownQuestion[] = Array.isArray(cfg.unknownQuestions) ? [...cfg.unknownQuestions] : []
+      const norm = q.toLowerCase()
+      const existing = list.find(x => !x.answered && String(x.question || '').toLowerCase().trim() === norm)
+      if (existing) {
+        existing.count = (existing.count || 1) + 1
+      } else {
+        list.push({
+          id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          question: q,
+          platform,
+          count: 1,
+          answered: false,
+          createdAt: new Date().toISOString(),
+        })
+      }
+      const trimmed = list.slice(-150)
+      await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: { webchatConfig: { ...cfg, unknownQuestions: trimmed } as any },
+      })
+    } catch (e: any) {
+      this.logger.warn('Bilinmeyen soru kaydedilemedi: ' + (e?.message || ''))
+    }
+  }
+
+  private maybeRecordUnknown(tenantId: string | null | undefined, question: string, response: string, platform = 'webchat', explicit = false) {
+    if (!tenantId || (!response && !explicit)) return
+    if (!explicit && !this.isUnknownResponse(response)) return
+    this.recordUnknownQuestion(tenantId, question, platform).catch(() => {})
+  }
+
+  private stripUnknownFlag(text: string): { text: string; unknown: boolean } {
+    const raw = String(text || '')
+    const unknown = /\[BILMIYORUM\]/i.test(raw)
+    return {
+      text: raw.replace(/\[BILMIYORUM\]/gi, '').replace(/\n{3,}/g, '\n\n').trim(),
+      unknown,
+    }
+  }
+
+  async getUnknownQuestions(tenantId: string): Promise<UnknownQuestion[]> {
+    if (!tenantId) return []
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
+    const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
+    const list: UnknownQuestion[] = Array.isArray(cfg.unknownQuestions) ? cfg.unknownQuestions : []
+    return list
+      .filter(x => !x.answered)
+      .sort((a, b) => (b.count || 1) - (a.count || 1) || +new Date(b.createdAt) - +new Date(a.createdAt))
+  }
+
+  async answerUnknownQuestion(tenantId: string, id: string, answer: string): Promise<{ success: boolean; config?: ChatBotConfig }> {
+    const ans = String(answer || '').trim()
+    if (!tenantId || !id || !ans) return { success: false }
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
+    const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
+    const list: UnknownQuestion[] = Array.isArray(cfg.unknownQuestions) ? [...cfg.unknownQuestions] : []
+    const item = list.find(x => x.id === id)
+    if (!item) return { success: false }
+
+    item.answer = ans
+    item.answered = true
+    item.answeredAt = new Date().toISOString()
+
+    const kbLine = `S: ${item.question}\nC: ${ans}`
+    const kb = String(cfg.knowledgeBase || '')
+    const newKb = kb.includes(kbLine) ? kb : (kb.trim() ? kb.trimEnd() + '\n\n' + kbLine : kbLine)
+    const faqs = Array.isArray(cfg.faqs) ? [...cfg.faqs] : []
+    if (!faqs.some((f: any) => String(f?.question || '').toLowerCase().trim() === String(item.question).toLowerCase().trim())) {
+      faqs.push({ question: item.question, answer: ans })
+    }
+
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { webchatConfig: { ...cfg, knowledgeBase: newKb, faqs, unknownQuestions: list } as any },
+    })
+    return { success: true, config: await this.getConfig(tenantId) }
+  }
+
+  async dismissUnknownQuestion(tenantId: string, id: string): Promise<{ success: boolean }> {
+    if (!tenantId || !id) return { success: false }
+    const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } })
+    const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
+    const list: UnknownQuestion[] = Array.isArray(cfg.unknownQuestions) ? [...cfg.unknownQuestions] : []
+    const item = list.find(x => x.id === id)
+    if (!item) return { success: false }
+    item.answered = true
+    item.dismissed = true
+    await this.prisma.tenant.update({ where: { id: tenantId }, data: { webchatConfig: { ...cfg, unknownQuestions: list } as any } })
+    return { success: true }
+  }
+
   async trainChat(tenantId: string, history: { role: string; content: string }[]): Promise<{ reply: string; config: ChatBotConfig; applied: string[] }> {
     const current = await this.getConfig(tenantId)
+    const { unknownQuestions, ...currentForAI } = current as any
     const msgs: Message[] = [
-      { role: 'system', content: TRAIN_SYSTEM + '\n' + JSON.stringify(current) },
+      { role: 'system', content: TRAIN_SYSTEM + '\n' + JSON.stringify(currentForAI) },
     ]
     const clean = (history || []).slice(-24).map(m => ({
       role: (m.role === 'assistant' ? 'assistant' : 'user') as Message['role'],
@@ -523,14 +645,16 @@ export class WebchatService {
       conv.messages.push({ role: 'user', content: short })
       conv.lastActivity = Date.now()
       const rawResponse = await this.generateResponse(short, conv, sessionId, short)
-      const response = this.stripOrderBlock(rawResponse)
+      const uf = this.stripUnknownFlag(rawResponse)
+      const response = this.stripOrderBlock(uf.text)
       conv.messages.push({ role: 'assistant', content: response })
       if (tid) {
         this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
         this.messagesService?.create({ platform: 'webchat', from: sessionId, content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
       }
       await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
-      await this.detectIntent(sessionId, cleaned, rawResponse, conv).catch(() => {}); return response
+      this.maybeRecordUnknown(tid, cleaned, response, 'webchat', uf.unknown)
+      await this.detectIntent(sessionId, cleaned, uf.text, conv).catch(() => {}); return response
     }
     const conv = await this.getOrCreateConversation(sessionId, tid || undefined)
     if (conv.messages.length >= MAX_CONV_MSGS * 2) {
@@ -539,14 +663,16 @@ export class WebchatService {
     conv.messages.push({ role: 'user', content: cleaned })
     conv.lastActivity = Date.now()
     const rawResponse = await this.generateResponse(cleaned, conv, sessionId, cleaned)
-    const response = this.stripOrderBlock(rawResponse)
+    const uf = this.stripUnknownFlag(rawResponse)
+    const response = this.stripOrderBlock(uf.text)
     conv.messages.push({ role: 'assistant', content: response })
     if (tid) {
       this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
       this.messagesService?.create({ platform: 'webchat', from: sessionId, content: response, direction: 'outgoing', tenantId: tid }).catch(() => {})
     }
     await this.syncLead(sessionId, cleaned, response, conv, tid || undefined).catch(() => {})
-    await this.detectIntent(sessionId, cleaned, rawResponse, conv).catch(() => {}); return response
+    this.maybeRecordUnknown(tid, cleaned, response, 'webchat', uf.unknown)
+    await this.detectIntent(sessionId, cleaned, uf.text, conv).catch(() => {}); return response
   }
 
   private async loadConfigForSlug(slug: string): Promise<ChatBotConfig> {
@@ -613,6 +739,7 @@ export class WebchatService {
     prompt += `- ASAGIDAKI BILGI HAVUZUNU KULLAN. Kullanici sorusunu oku, bilgi havuzunda AYNI KONUYU bul, buldugun bilgiyi cevap olarak ver.\n`
     prompt += `- Bilgi havuzunda konuyla ilgili bilgi VARSA onu kullan, bilgi havuzundaki kural ve yonlendirmelere uygun cevap ver.\n`
     prompt += `- Bilgi havuzunda cevap yoksa KENDI profesyonel ve nazik tarzinla cevap ver, kisa ve yardimci ol. "Bu konuda su an bilgim yok" gibi kalip cevaplar KULLANMA.\n`
+    prompt += `- ONEMLI: Bilgi havuzunda ve isletme ayarlarinda sorunun NET cevabi YOKSA, cevabinin EN SONUNA aynen [BILMIYORUM] etiketini ekle. Bu etiket musteriye gosterilmez; isletme sahibinin ogrenmesi icindir. Cevap VARSA bu etiketi ASLA ekleme.\n`
     prompt += `- KESINLIKLE kendi bilgini uydurma, bilgi havuzundaki bilgileri ve isletme ayarlarini kullan.\n`
     prompt += `- KESINLIKLE su tür genel cevaplari VERME: "Mesajiniz alindi", "En kisa surede donus yapilacaktir", "Iletilecektir", "Gerekli yonlendirme yapilacaktir".\n`
     prompt += `- KESINLIKLE isaretleme kullanma. Duzyazi yaz.\n`
@@ -890,8 +1017,11 @@ export class WebchatService {
       const conv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       conv.messages.push({ role: 'user', content: short })
       conv.lastActivity = Date.now()
-      const response = await this.generateResponse(short, conv, '', short, tenantId)
+      const rawResponse = await this.generateResponse(short, conv, '', short, tenantId)
+      const uf = this.stripUnknownFlag(rawResponse || '')
+      const response = uf.text || null
       if (response) conv.messages.push({ role: 'assistant', content: response })
+      this.maybeRecordUnknown(tenantId, cleaned, response || '', platform, uf.unknown)
       return response
     }
 
@@ -922,9 +1052,10 @@ export class WebchatService {
     const enhanced = campaignContext ? cleaned + '\n\n[KAMPANYA BILGISI:\n' + campaignContext + ']' : cleaned
     const rawResponse = await this.generateResponse(enhanced, conv, '', enhanced, tenantId)
     if (!rawResponse) return null
-    const blockNow = this.parseOrderBlock(rawResponse)
-    const linesNow = blockNow.length ? blockNow : this.parseOrderLines(rawResponse)
-    const response = blockNow.length ? this.stripOrderBlock(rawResponse) : rawResponse
+    const uf = this.stripUnknownFlag(rawResponse)
+    const blockNow = this.parseOrderBlock(uf.text)
+    const linesNow = blockNow.length ? blockNow : this.parseOrderLines(uf.text)
+    const response = blockNow.length ? this.stripOrderBlock(uf.text) : uf.text
     if (linesNow.length) this.pendingOrders.set(sessionKey, linesNow)
     conv.messages.push({ role: 'assistant', content: response })
     // Multi-channel lead creation
@@ -961,6 +1092,7 @@ export class WebchatService {
         if (this.reservationsService) this.reservationsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '20:00', guests: 2 }).catch(() => {})
       }
     } catch {}
+    this.maybeRecordUnknown(tenantId, cleaned, response, platform, uf.unknown)
     return response
   }
 
