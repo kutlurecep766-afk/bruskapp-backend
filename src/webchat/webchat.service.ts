@@ -858,7 +858,7 @@ export class WebchatService {
     conv.lastActivity = Date.now()
     const rawResponse = await this.generateResponse(cleaned, conv, sessionId, cleaned)
     const uf = this.stripUnknownFlag(rawResponse)
-    const response = this.stripOrderBlock(uf.text)
+    const response = this.stripCustomerBlock(this.stripOrderBlock(uf.text))
     conv.messages.push({ role: 'assistant', content: response })
     if (tid) {
       this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
