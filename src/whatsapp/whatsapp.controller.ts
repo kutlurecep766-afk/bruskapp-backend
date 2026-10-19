@@ -180,9 +180,12 @@ export class WhatsappController {
     for (const msg of messages) {
       if (msg.direction === 'send') continue // skip echoes
 
-      if (!msg.text?.body) continue
+      let text = msg.text?.body
+      if (!text && msg.location && (msg.location.latitude != null || msg.location.longitude != null)) {
+        text = `Konum paylasildi: https://maps.google.com/?q=${msg.location.latitude},${msg.location.longitude}`
+      }
+      if (!text) continue
 
-      const text = msg.text.body
       const from = msg.from || 'unknown'
 
       await this.messagesService.create({

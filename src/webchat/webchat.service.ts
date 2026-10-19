@@ -105,6 +105,8 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   unknownQuestions: [],
 }
 
+const LEGACY_WELCOME = 'Merhaba! Bruskapp AI asistan'
+
 const TRAIN_SYSTEM = `Sen Bruskapp platformunun yapay zeka KURULUM ASISTANISIN.
 Gorev: Isletme sahibiyle Turkce sohbet ederek isletmesini, urunlerini, hizmetlerini, kurallarini ve SSS'lerini ogrenmek ve ogrendiklerini sistem konfigurasyonuna kaydetmek.
 
@@ -113,6 +115,7 @@ Davranis:
 - Isletme sahibi bilgi verdikce eksik kalan ONEMLI bilgileri SORARAK netlestir: isletme adi, ne sattigi/aciklamasi, urun veya hizmet + fiyat, calisma saatleri, adres, telefon, siparis/teslimat/odeme kurallari, randevu kurallari, sik sorulan sorular.
 - Ayni bilgiyi tekrar sorma; sadece eksikleri sor. Kullanici "hepsi bu" derse ozet gec ve bitir.
 - Emin olmadigin bilgiyi ASLA uydurma.
+- Markdown/isaretleme KULLANMA: yildiz (** veya *), kare (#), alt cizgi ve ters tirnak ile vurgulama YAPMA. Madde listesi verirken satirlari "- " yerine "• " ile baslat veya duz cumle halinde yaz.
 
 Her mesajinda SADECE su iki bolumu uret: once kisa dogal Turkce cevap, sonra (varsa) guncellenecek konfigurasyon JSON blogu.
 
@@ -152,6 +155,7 @@ export class WebchatService {
   private aiBaseUrl: string
   private lastOrderAt = new Map<string, number>()
   private pendingOrders = new Map<string, { name: string; quantity: number }[]>()
+  private pendingCustomers = new Map<string, Record<string, string>>()
   private pendingAppts = new Map<string, { name?: string; phone?: string; service?: string; date?: string; time?: string; note?: string }>()
   private sessionRateMap = new Map<string, { count: number; resetAt: number }>()
   private ipRateMap = new Map<string, { count: number; resetAt: number }>()
@@ -173,8 +177,21 @@ export class WebchatService {
     return {
       ...DEFAULT_CONFIG,
       businessName: tenantName || DEFAULT_CONFIG.businessName,
+      welcomeMessage: '',
     }
   }
+
+  private normalizeConfig(cfg: ChatBotConfig): ChatBotConfig {
+    if (this.isLegacyWelcome(cfg.welcomeMessage)) cfg.welcomeMessage = ''
+    return cfg
+  }
+
+  private isLegacyWelcome(w?: string): boolean {
+    if (!w) return false
+    const t = w.trim()
+    return t.startsWith(LEGACY_WELCOME) || t.includes('Bruskapp AI asistan')
+  }
+
   async getConfig(tenantId: string): Promise<ChatBotConfig> {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
@@ -182,7 +199,7 @@ export class WebchatService {
     })
 
     if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
-      return { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
+      return this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
     }
 
     return this.defaultConfig(tenant?.name)
@@ -192,9 +209,9 @@ export class WebchatService {
       where: { slug },
       select: { webchatConfig: true, name: true },
     })
-    const cfg = tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0
+    const cfg = this.normalizeConfig(tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0
       ? { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
-      : this.defaultConfig(tenant?.name)
+      : this.defaultConfig(tenant?.name))
     return {
       businessName: cfg.businessName,
       welcomeMessage: cfg.welcomeMessage,
@@ -207,9 +224,9 @@ export class WebchatService {
       where: { id: tenantId },
       select: { webchatConfig: true, name: true },
     })
-    const current = tenant?.webchatConfig && typeof tenant.webchatConfig === 'object'
+    const current = this.normalizeConfig(tenant?.webchatConfig && typeof tenant.webchatConfig === 'object'
       ? { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
-      : this.defaultConfig(tenant?.name)
+      : this.defaultConfig(tenant?.name))
     if (!updates.knowledgeBase && current.knowledgeBase) {
       (updates as any).knowledgeBase = current.knowledgeBase
     }
@@ -236,6 +253,7 @@ export class WebchatService {
       data: { webchatConfig: {} as any },
     })
     this.pendingOrders.clear()
+    this.pendingCustomers.clear()
     this.pendingAppts.clear()
     this.conversations.clear()
     return this.getConfig(tenantId)
@@ -366,12 +384,13 @@ export class WebchatService {
     }
 
     const { reply, patch } = this.extractConfigBlock(raw)
+    const cleanReply = this.stripMarkup(reply)
     const applied = Object.keys(patch)
     let config = current
     if (applied.length > 0) {
       config = await this.updateConfig(tenantId, patch)
     }
-    return { reply, config, applied }
+    return { reply: cleanReply, config, applied }
   }
 
   private extractConfigBlock(text: string): { reply: string; patch: Partial<ChatBotConfig> } {
@@ -507,6 +526,57 @@ export class WebchatService {
       .replace(/\n{3,}/g, '\n\n')
       .replace(/[ \t]+$/gm, '')
       .trim()
+  }
+
+  private parseCustomerBlock(text: string): Record<string, string> {
+    const raw = String(text || '')
+    const m = raw.match(/\[MUSTERI\]([\s\S]*?)\[\/MUSTERI\]/i)
+    if (!m) return {}
+    const out: Record<string, string> = {}
+    for (const line of m[1].split('\n')) {
+      const mm = line.match(/^\s*(ad|isim|telefon|adres|konum|not|notlar)\s*:\s*(.+?)\s*$/i)
+      if (!mm) continue
+      const key = mm[1].toLowerCase()
+      const val = mm[2].trim()
+      if (!val) continue
+      const k = (key === 'isim' ? 'ad' : key === 'notlar' ? 'not' : key)
+      out[k] = val
+    }
+    return out
+  }
+
+  private stripCustomerBlock(text: string): string {
+    return String(text || '')
+      .replace(/\[MUSTERI\][\s\S]*?\[\/MUSTERI\]/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .replace(/[ \t]+$/gm, '')
+      .trim()
+  }
+
+  private mergeCustomerInfo(sessionKey: string, patch: Record<string, string>): Record<string, string> {
+    if (!patch || !Object.keys(patch).length) return this.pendingCustomers.get(sessionKey) || {}
+    const merged = { ...(this.pendingCustomers.get(sessionKey) || {}), ...patch }
+    this.pendingCustomers.set(sessionKey, merged)
+    return merged
+  }
+
+  private missingOrderFields(os: any, info: Record<string, string>): string[] {
+    const missing: string[] = []
+    const has = (v?: string) => !!v && v.trim().length > 0
+    if (os?.requireName && !has(info.ad)) missing.push('Ad Soyad')
+    if (os?.requirePhone && !has(info.telefon)) missing.push('Telefon')
+    if (os?.requireAddress && !has(info.adres)) missing.push('Adres')
+    if (os?.requireLocation && !has(info.konum)) missing.push('Konum')
+    if (os?.requireNote && !has(info.not)) missing.push('Sipariş notu')
+    return missing
+  }
+
+  private orderNoteFromInfo(info: Record<string, string>): string {
+    return [
+      info.adres ? 'Adres: ' + info.adres : '',
+      info.konum ? 'Konum: ' + info.konum : '',
+      info.not ? 'Not: ' + info.not : '',
+    ].filter(Boolean).join(' | ')
   }
 
   private parseOrderLines(text: string): { name: string; quantity: number }[] {
@@ -646,7 +716,7 @@ export class WebchatService {
       conv.lastActivity = Date.now()
       const rawResponse = await this.generateResponse(short, conv, sessionId, short)
       const uf = this.stripUnknownFlag(rawResponse)
-      const response = this.stripOrderBlock(uf.text)
+      const response = this.stripCustomerBlock(this.stripOrderBlock(uf.text))
       conv.messages.push({ role: 'assistant', content: response })
       if (tid) {
         this.messagesService?.create({ platform: 'webchat', from: sessionId, content: cleaned, direction: 'incoming', tenantId: tid }).catch(() => {})
@@ -681,7 +751,7 @@ export class WebchatService {
       select: { webchatConfig: true, name: true },
     })
     if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
-      return { ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) }
+      return this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
     }
     return this.defaultConfig(tenant?.name)
   }
@@ -732,7 +802,7 @@ export class WebchatService {
     const c = config
     let prompt = `Sen ${c.businessName} işletmesinin yapay zeka asistanısın.\n`
     prompt += `İşletme: ${c.description} | Adres: ${c.address} | E-posta: ${c.email} | Telefon: ${c.phone || 'Yok'} | Çalışma: ${c.hours}\n`
-    prompt += `Karşılama: ${c.welcomeMessage}\n`
+    if (c.welcomeMessage) prompt += `Karşılama: ${c.welcomeMessage}\n`
     prompt += `\nKurallar:\n`
     prompt += `- Turkce, kisa ve oz cevap ver.\n`
     prompt += `- ZORUNLU: Tum Turkce karakterleri dogru kullan.\n`
@@ -780,6 +850,7 @@ export class WebchatService {
     }
     if (canOrder) prompt += `- SIPARIS: Kullanici siparis vermek istediginde URUNU ve BIRIMI netlestir (kg/adet/gram/set/porsiyon), secenekleri sor; sonra tum siparisi MADDELER halinde ozetle ve "Onayliyor musunuz?" diye sor. Onay gelince "Siparisinizi aldim" de.\n`
     if (canOrder) prompt += `- SIPARIS MAKINE BLOGU: Siparisi ozetleyip listeledigin HER mesajda (onay isterken de, onay aldiktan sonra da), cevabinin EN SONUNA gizli blok ekle. Blok her zaman EN SONDA olsun. Her urun AYRI SATIRDA. Format AYNEN:\n[SIPARIS]\n2 x Urun Adi\n1 x Diger Urun\n[/SIPARIS]\nBlok icinde fiyat, aciklama veya baska yazi YAZMA. Urun adi kisa olsun.\n`
+    if (canOrder) prompt += `- MUSTERI BILGILERI BLOGU: Musterinin paylastigi ad, telefon, adres, konum ve not bilgilerini cevabinin EN SONUNA gizli blok olarak ekle. Format AYNEN:\n[MUSTERI]\nad: ...\ntelefon: ...\nadres: ...\nkonum: ...\nnot: ...\n[/MUSTERI]\nSadece musteri paylastigi alanlari yaz, uydurma. Musteri WhatsApp/konum paylasirsa konum alanina linki veya koordinati yaz. Eksik zorunlu bilgi varsa once o bilgiyi iste.\n`
     if (canAppt) {
       if (c.services && c.services.length) {
         prompt += `- HIZMETLER (sadece bunlari kullan):\n`
@@ -939,15 +1010,23 @@ export class WebchatService {
     }
   }
 
-  private sanitizeResponse(text: string): string {
-    let clean = text
+  private stripMarkup(text: string): string {
+    let clean = String(text || '')
+    clean = clean.replace(/```[\s\S]*?```/g, '')
     clean = clean.replace(/\*\*(.+?)\*\*/g, '$1')
-    clean = clean.replace(/\*(.+?)\*/g, '$1')
     clean = clean.replace(/__(.+?)__/g, '$1')
     clean = clean.replace(/~~(.+?)~~/g, '$1')
     clean = clean.replace(/`(.+?)`/g, '$1')
     clean = clean.replace(/#{1,6}\s/g, '')
-    clean = clean.replace(/```[\s\S]*?```/g, '')
+    clean = clean.replace(/\*/g, '')
+    clean = clean.replace(/^\s*[-+]\s+/gm, '• ')
+    clean = clean.replace(/[ \t]+\n/g, '\n')
+    clean = clean.replace(/\n{3,}/g, '\n\n')
+    return clean.trim()
+  }
+
+  private sanitizeResponse(text: string): string {
+    let clean = this.stripMarkup(text)
     clean = clean.replace(/sk-[a-zA-Z0-9]{20,}/g, '[REDACTED]')
     clean = clean.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, (m) => {
       const parts = m.split('@')
@@ -1019,7 +1098,7 @@ export class WebchatService {
       conv.lastActivity = Date.now()
       const rawResponse = await this.generateResponse(short, conv, '', short, tenantId)
       const uf = this.stripUnknownFlag(rawResponse || '')
-      const response = uf.text || null
+      const response = this.stripCustomerBlock(this.stripOrderBlock(uf.text)) || null
       if (response) conv.messages.push({ role: 'assistant', content: response })
       this.maybeRecordUnknown(tenantId, cleaned, response || '', platform, uf.unknown)
       return response
@@ -1055,8 +1134,10 @@ export class WebchatService {
     const uf = this.stripUnknownFlag(rawResponse)
     const blockNow = this.parseOrderBlock(uf.text)
     const linesNow = blockNow.length ? blockNow : this.parseOrderLines(uf.text)
-    const response = blockNow.length ? this.stripOrderBlock(uf.text) : uf.text
+    let response = blockNow.length ? this.stripOrderBlock(uf.text) : uf.text
+    response = this.stripCustomerBlock(response)
     if (linesNow.length) this.pendingOrders.set(sessionKey, linesNow)
+    this.mergeCustomerInfo(sessionKey, this.parseCustomerBlock(uf.text))
     conv.messages.push({ role: 'assistant', content: response })
     // Multi-channel lead creation
     try {
@@ -1082,8 +1163,17 @@ export class WebchatService {
       const approve = this.isApprovalMessage(cleaned)
       const pending = this.pendingOrders.get(sessionKey) || []
       if (features.orders !== false && approve && pending.length) {
+        const cfgOrder = await this.getConfig(tenantId).catch(() => null as any)
+        const os = (cfgOrder && cfgOrder.orderSettings) || {}
+        const info = this.pendingCustomers.get(sessionKey) || {}
+        const missing = this.missingOrderFields(os, info)
+        if (missing.length) {
+          response = `Siparişinizi tamamlayabilmemiz için şu bilgiyi de paylaşır mısınız: ${missing.join(', ')}?`
+          return response
+        }
         this.pendingOrders.delete(sessionKey)
-        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', products: pending, totalAmount: 0, note: '' }).catch(() => {})
+        this.pendingCustomers.delete(sessionKey)
+        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: info.ad || userId || platform + ' Kullanıcısı', products: pending, totalAmount: 0, note: this.orderNoteFromInfo(info) }).catch(() => {})
       }
       if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
         if (this.appointmentsService) this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
@@ -1168,19 +1258,27 @@ export class WebchatService {
       const blockI = this.parseOrderBlock(aiResponse)
       const linesI = blockI.length ? blockI : this.parseOrderLines(aiResponse)
       if (linesI.length) this.pendingOrders.set(sessionId, linesI)
+      this.mergeCustomerInfo(sessionId, this.parseCustomerBlock(aiResponse))
       const pendingI = this.pendingOrders.get(sessionId) || []
       if (features.orders !== false && this.isApprovalMessage(message) && pendingI.length) {
-        this.pendingOrders.delete(sessionId)
-        if (this.ordersService) {
-          await this.ordersService.create({
-            tenantId: tenant.id,
-            platform: 'webchat',
-            customerName,
-            customerContact,
-            products: pendingI,
-            totalAmount: 0,
-            note: '',
-          }).catch(() => {})
+        const cfgO = await this.getConfig(tenant.id).catch(() => null as any)
+        const osO = (cfgO && cfgO.orderSettings) || {}
+        const infoO = this.pendingCustomers.get(sessionId) || {}
+        const missingO = this.missingOrderFields(osO, infoO)
+        if (!missingO.length) {
+          this.pendingOrders.delete(sessionId)
+          this.pendingCustomers.delete(sessionId)
+          if (this.ordersService) {
+            await this.ordersService.create({
+              tenantId: tenant.id,
+              platform: 'webchat',
+              customerName: infoO.ad || customerName,
+              customerContact: infoO.telefon || customerContact,
+              products: pendingI,
+              totalAmount: 0,
+              note: this.orderNoteFromInfo(infoO),
+            }).catch(() => {})
+          }
         }
       }
 
