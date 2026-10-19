@@ -128,6 +128,8 @@ Davranis:
 - Sicak, nazik, kisa ve net konus. Gereksiz uzun yazma.
 - Isletme sahibi bilgi verdikce eksik kalan ONEMLI bilgileri SORARAK netlestir: isletme adi, ne sattigi/aciklamasi, urun veya hizmet + fiyat, calisma saatleri, adres, telefon, siparis/teslimat/odeme kurallari, randevu kurallari, sik sorulan sorular.
 - Ayni bilgiyi tekrar sorma; sadece eksikleri sor. Kullanici "hepsi bu" derse ozet gec ve bitir.
+- ISLETME VERISI: Sana "ISLETME VERILERI" basligi altinda canli isletme verileri verilir. Isletme sahibi "bugun kac siparis aldik", "ciro ne kadar", "kac randevu var", "kac mesaj geldi" gibi SORULAR sorarsa bu verileri kullanarak net sayilarla ve tarihlerle cevap ver. Veri yoksa "kayit yok" de; ASLA "erisemiyorum/goremiyorum/gecmise bakamiyorum" deme.
+- Gecmis bilgisi: Onceki konusmalar ve musteri hafizasi sana verilir; kullanici gecmise dair soru sorarsa bu bilgilere dayanarak cevap ver.
 - BILDIRIMLERIM AYARI: Isletme sahibine "Bildirimlerim" sayfasina hangi turlerin dusecegini (includeKinds) ve hangilerinin "Oncelikli" bolumunde gorunecegini (priorityKinds) sor. Turler: siparis (order), randevu (appointment), rezervasyon (reservation), talep (request), sikayet (complaint), en cok sorulan soru (question). Ornek istek: "siparisler ve en cok sorulan sorular dussun, siparisler oncelikli olsun" → "feedSettings": { "includeKinds": ["order","question"], "priorityKinds": ["order"] }. includeKinds sayfada gorunecek turlerdir; priorityKinds oncelikli bolumde gorunecek turlerdir ve includeKinds icinde olmalidir. Verilmezse varsayilan includeKinds: order, appointment, reservation, request, complaint, question; varsayilan priorityKinds: order, appointment, reservation, request.
 - Emin olmadigin bilgiyi ASLA uydurma.
 - Markdown/isaretleme KULLANMA: yildiz (** veya *), kare (#), alt cizgi ve ters tirnak ile vurgulama YAPMA. Madde listesi verirken satirlari "- " yerine "• " ile baslat veya duz cumle halinde yaz.
@@ -471,8 +473,9 @@ export class WebchatService {
   async trainChat(tenantId: string, history: { role: string; content: string }[]): Promise<{ reply: string; config: ChatBotConfig; applied: string[] }> {
     const current = await this.getConfig(tenantId)
     const { unknownQuestions, ...currentForAI } = current as any
+    const bizCtx = await this.buildBusinessContext(tenantId).catch(() => '')
     const msgs: Message[] = [
-      { role: 'system', content: TRAIN_SYSTEM + '\n' + JSON.stringify(currentForAI) },
+      { role: 'system', content: TRAIN_SYSTEM + '\n' + JSON.stringify(currentForAI) + (bizCtx ? '\n' + bizCtx : '') },
     ]
     const isPlatform = (current.businessName || '').toLowerCase() === 'bruskapp'
     const clean = (history || [])
@@ -734,6 +737,15 @@ export class WebchatService {
               content: msg.content,
             })
           }
+          if (!isPlatform) {
+            const lead = await this.prisma.lead.findFirst({ where: { tenantId: tid, sessionId: sessionKey }, orderBy: { createdAt: 'desc' } }).catch(() => null)
+            if (lead && (lead.name || lead.phone)) {
+              const cur = this.pendingCustomers.get(sessionKey) || {}
+              if (!cur.ad && lead.name) cur.ad = lead.name
+              if (!cur.telefon && lead.phone) cur.telefon = lead.phone
+              this.pendingCustomers.set(sessionKey, cur)
+            }
+          }
         }
       } catch {}
       this.conversations.set(sessionKey, conv)
@@ -879,28 +891,46 @@ export class WebchatService {
       }
       if (!tid) return null
 
-      // Kullanici adini conversation'dan cikar
+      // Kullanici adini conversation'dan ve Lead kaydindan cikar
       const userMsgs = conv?.messages?.filter(m => m.role === 'user').map(m => m.content).join(' ') || ''
       const nameMatch = userMsgs.match(/(?:benim adım|adim|bana da|ben|bana|ismim) (.+?)(?:[,.]|\s|$)/i)
-      const customerName = nameMatch ? nameMatch[1].trim() : null
+      let customerName: string | null = nameMatch ? nameMatch[1].trim() : null
+      let customerPhone = ''
+      const lead = sessionId
+        ? await this.prisma.lead.findFirst({ where: { tenantId: tid, sessionId }, orderBy: { createdAt: 'desc' } }).catch(() => null)
+        : null
+      if (lead) {
+        if (!customerName && lead.name) customerName = lead.name
+        if (lead.phone) customerPhone = lead.phone
+      }
 
       let ctx = '\nKULLANICI VERILERI (DB):\n'
 
-      if (customerName) {
-        // Aktif siparisler
-        const orders = await this.prisma.order.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
-        if (orders.length > 0) ctx += `- Aktif siparisleri: ${orders.map(o => `#${o.id} (${(o.products as any[])?.[0]?.name || 'urun'} - olusturuldu ${this.fmtDate(o.createdAt.toISOString())})`).join(', ')}\n`
+      if (customerName || customerPhone || sessionId) {
+        const custOr: any[] = []
+        if (customerName) custOr.push({ customerName })
+        if (customerPhone) custOr.push({ customerContact: customerPhone })
 
-        // Aktif randevular
-        const appointments = await this.prisma.appointment.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
-        if (appointments.length > 0) ctx += `- Aktif randevulari: ${appointments.map(a => `${a.service || 'Randevu'} (${this.fmtDate(new Date(a.date).toISOString())}${a.time ? ' ' + a.time : ''}, olusturuldu ${this.fmtDate(a.createdAt.toISOString())})`).join(', ')}\n`
+        const orderOr = [...custOr]
+        if (sessionId) orderOr.push({ deviceId: sessionId })
 
-        // Aktif rezervasyonlar
-        const reservations = await this.prisma.reservation.findMany({ where: { tenantId: tid, customerName, status: { not: 'cancelled' } }, orderBy: { createdAt: 'desc' }, take: 3 })
-        if (reservations.length > 0) ctx += `- Aktif rezervasyonlari: ${reservations.map(r => `${r.guests} kisilik (${this.fmtDate(new Date(r.date).toISOString())}${r.time ? ' ' + r.time : ''}, olusturuldu ${this.fmtDate(r.createdAt.toISOString())})`).join(', ')}\n`
+        const orders = orderOr.length
+          ? await this.prisma.order.findMany({ where: { tenantId: tid, status: { not: 'cancelled' }, OR: orderOr }, orderBy: { createdAt: 'desc' }, take: 5 })
+          : []
+        if (orders.length > 0) ctx += `- Bu musterinin siparisleri: ${orders.map(o => `#${o.id} (${(o.products as any[])?.[0]?.name || 'urun'} - ${o.status} - ${this.fmtDate(o.createdAt.toISOString())})`).join(', ')}\n`
+
+        const appointments = custOr.length
+          ? await this.prisma.appointment.findMany({ where: { tenantId: tid, status: { not: 'cancelled' }, OR: custOr }, orderBy: { createdAt: 'desc' }, take: 3 })
+          : []
+        if (appointments.length > 0) ctx += `- Bu musterinin randevulari: ${appointments.map(a => `${a.service || 'Randevu'} (${this.fmtDate(new Date(a.date).toISOString())}${a.time ? ' ' + a.time : ''}, ${a.status})`).join(', ')}\n`
+
+        const reservations = custOr.length
+          ? await this.prisma.reservation.findMany({ where: { tenantId: tid, status: { not: 'cancelled' }, OR: custOr }, orderBy: { createdAt: 'desc' }, take: 3 })
+          : []
+        if (reservations.length > 0) ctx += `- Bu musterinin rezervasyonlari: ${reservations.map(r => `${r.guests} kisilik (${this.fmtDate(new Date(r.date).toISOString())}${r.time ? ' ' + r.time : ''}, ${r.status})`).join(', ')}\n`
 
         if (orders.length === 0 && appointments.length === 0 && reservations.length === 0) {
-          ctx += '- Bu kullanicinin aktif siparis, randevu veya rezervasyonu bulunmamaktadir.\n'
+          ctx += '- Bu musterinin aktif siparis, randevu veya rezervasyonu bulunmamaktadir.\n'
         }
       } else {
         ctx += '- Kullanici adi henuz bilinmiyor. Kullanici adini ogrenmek icin "Adinizi ogrenebilir miyim?" diye sor.\n'
@@ -909,6 +939,41 @@ export class WebchatService {
       ctx += 'Yukaridaki verileri kullanarak kullaniciya dogru bilgi ver. Kullanicinin kaydi yoksa "aktif kaydiniz bulunmamaktadir" de.\n'
       return ctx
     } catch { return null }
+  }
+
+  private async buildBusinessContext(tenantId: string): Promise<string> {
+    try {
+      const now = new Date()
+      const start = new Date(now)
+      start.setHours(0, 0, 0, 0)
+      const [todayOrders, totalOrders, pendingOrders, appts, reservations, messages, tenant] = await Promise.all([
+        this.prisma.order.findMany({ where: { tenantId, createdAt: { gte: start } }, orderBy: { createdAt: 'desc' } }),
+        this.prisma.order.count({ where: { tenantId } }),
+        this.prisma.order.count({ where: { tenantId, status: 'pending' } }),
+        this.prisma.appointment.count({ where: { tenantId, createdAt: { gte: start } } }),
+        this.prisma.reservation.count({ where: { tenantId, createdAt: { gte: start } } }),
+        this.prisma.message.count({ where: { tenantId, direction: 'incoming' } }),
+        this.prisma.tenant.findUnique({ where: { id: tenantId }, select: { webchatConfig: true } }),
+      ])
+      const revenue = todayOrders.reduce((s, o) => s + (Number(o.totalAmount) || 0), 0)
+      const cfg: any = (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object') ? tenant.webchatConfig : {}
+      const unknownCount = Array.isArray(cfg.unknownQuestions) ? cfg.unknownQuestions.filter((q: any) => !q.answered && !q.dismissed).length : 0
+      let ctx = '\nISLETME VERILERI (canli; isletme sahibinin sorularini bu verilerle net sayilarla cevapla):\n'
+      ctx += `- Bugun (${this.fmtDate(now.toISOString())}): ${todayOrders.length} siparis, ${Math.round(revenue)} TL ciro.\n`
+      ctx += `- Toplam siparis: ${totalOrders} (bekleyen: ${pendingOrders}).\n`
+      ctx += `- Bugun: ${appts} randevu, ${reservations} rezervasyon.\n`
+      ctx += `- Toplam gelen musteri mesaji: ${messages}. Cevaplanmamis soru: ${unknownCount}.\n`
+      if (todayOrders.length) {
+        ctx += `- Bugunun siparisleri: ${todayOrders.slice(0, 8).map(o => `#${o.id} ${o.customerName} ${Math.round(Number(o.totalAmount) || 0)}TL (${o.status})`).join(', ')}\n`
+      }
+      if (Array.isArray(cfg.changeLog) && cfg.changeLog.length) {
+        const last = cfg.changeLog[cfg.changeLog.length - 1]
+        ctx += `- Bilgiler en son ${this.fmtDate(last?.at)} guncellendi.\n`
+      }
+      return ctx
+    } catch {
+      return ''
+    }
   }
 
   private buildBaseSystem(config: ChatBotConfig): string {
@@ -1290,8 +1355,9 @@ export class WebchatService {
       const pConv = await this.getOrCreateConversation(sessionKey, tenantId, userId)
       const allMsgs = pConv.messages.filter(m => m.role === 'user').map(m => m.content).join(' ').toLowerCase()
       const approve = this.isApprovalMessage(cleaned)
+      const aiConfirmsP = /(sipari[şs]iniz.*(al|ald|olustur|kayd|onay)|olusturuldu|siparisiniz alindi|kaydedildi)/i.test(response || '')
       const pending = this.pendingOrders.get(sessionKey) || []
-      if (features.orders !== false && approve && pending.length) {
+      if (features.orders !== false && (approve || aiConfirmsP) && pending.length) {
         const cfgOrder = await this.getConfig(tenantId).catch(() => null as any)
         const os = (cfgOrder && cfgOrder.orderSettings) || {}
         const info = this.pendingCustomers.get(sessionKey) || {}
@@ -1302,7 +1368,7 @@ export class WebchatService {
         }
         this.pendingOrders.delete(sessionKey)
         this.pendingCustomers.delete(sessionKey)
-        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: info.ad || userId || platform + ' Kullanıcısı', products: pending, totalAmount: 0, note: this.orderNoteFromInfo(info) }).catch(() => {})
+        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: info.ad || userId || platform + ' Kullanıcısı', customerContact: info.telefon || undefined, products: pending, totalAmount: 0, note: this.orderNoteFromInfo(info), deviceId: sessionKey }).catch(() => {})
       }
       if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
         if (this.appointmentsService) this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
@@ -1395,7 +1461,8 @@ export class WebchatService {
       if (linesI.length) this.pendingOrders.set(sessionId, linesI)
       this.mergeCustomerInfo(sessionId, this.parseCustomerBlock(aiResponse))
       const pendingI = this.pendingOrders.get(sessionId) || []
-      if (features.orders !== false && this.isApprovalMessage(message) && pendingI.length) {
+      const aiConfirmsI = /(sipari[şs]iniz.*(al|ald|olustur|kayd|onay)|olusturuldu|siparisiniz alindi|kaydedildi)/i.test(aiResponse)
+      if (features.orders !== false && (this.isApprovalMessage(message) || aiConfirmsI) && pendingI.length) {
         const cfgO = await this.getConfig(tenant.id).catch(() => null as any)
         const osO = (cfgO && cfgO.orderSettings) || {}
         const infoO = this.pendingCustomers.get(sessionId) || {}
@@ -1412,6 +1479,7 @@ export class WebchatService {
               products: pendingI,
               totalAmount: 0,
               note: this.orderNoteFromInfo(infoO),
+              deviceId: sessionId,
             }).catch(() => {})
           }
         }
@@ -1518,31 +1586,34 @@ export class WebchatService {
       const phonePattern = /(0[0-9]{10}|05[0-9]{9}|\+90[0-9]{10}|5[0-9]{9}|\+90[0-9]{12})/g
       const nameMatch = message.match(namePattern)
       const phoneMatch = message.match(phonePattern)
+      const info = this.pendingCustomers.get(sessionId) || {}
+      const leadName = (nameMatch ? nameMatch[1].trim() : '') || info.ad || ''
+      const leadPhone = (phoneMatch ? phoneMatch[0] : '') || info.telefon || ''
 
       const userMsgs = conv.messages.filter(m => m.role === 'user').map(m => m.content)
       const needs = userMsgs.join(' | ').slice(0, 500)
       const convJson = JSON.parse(JSON.stringify(conv.messages.slice(-30)))
 
-      const existing = await this.prisma.lead.findFirst({ where: { sessionId }, orderBy: { createdAt: 'desc' } })
+      const existing = await this.prisma.lead.findFirst({ where: tenantId ? { sessionId, tenantId } : { sessionId }, orderBy: { createdAt: 'desc' } })
 
       if (existing) {
         const updateData: any = {
           conversation: convJson,
           needs: needs,
         }
-        if (!existing.phone && phoneMatch) updateData.phone = phoneMatch[0]
-        if (!existing.name && nameMatch) updateData.name = nameMatch[1].trim()
+        if (!existing.phone && leadPhone) updateData.phone = leadPhone
+        if (!existing.name && leadName) updateData.name = leadName
         await this.prisma.lead.update({ where: { id: existing.id }, data: updateData })
-      } else {
+      } else if (tenantId) {
         await this.prisma.lead.create({
           data: {
             sessionId,
-            name: nameMatch ? nameMatch[1].trim() : '',
-            phone: phoneMatch ? phoneMatch[0] : '',
+            name: leadName,
+            phone: leadPhone,
             needs: needs,
             conversation: convJson,
             source: 'webchat',
-            tenantId: tenantId!,
+            tenantId,
           },
         })
       }
