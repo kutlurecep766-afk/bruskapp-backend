@@ -615,6 +615,30 @@ export class WebchatService {
     return null
   }
 
+  private parsePriceValue(p: any): number {
+    const s = String(p ?? '').replace(/[^\d.,]/g, '')
+    if (!s) return 0
+    if (s.includes(',') && s.includes('.')) return parseFloat(s.replace(/\./g, '').replace(',', '.')) || 0
+    if (s.includes(',')) return parseFloat(s.replace(',', '.')) || 0
+    return parseFloat(s) || 0
+  }
+
+  private itemsTotal(config: ChatBotConfig, items: { name: string; quantity: number }[]): number {
+    let total = 0
+    for (const it of items) {
+      const n = String(it.name || '').toLowerCase().trim()
+      const list = config?.products || []
+      const prod = list.find(p => String(p.name || '').toLowerCase().trim() === n)
+        || list.find(p => n && (String(p.name || '').toLowerCase().includes(n) || n.includes(String(p.name || '').toLowerCase())))
+      if (prod) total += this.parsePriceValue(prod.price) * (it.quantity || 1)
+    }
+    return Math.round(total)
+  }
+
+  private minOrderAmount(config: ChatBotConfig): number {
+    return this.parsePriceValue((config as any)?.orderSettings?.minOrderAmount)
+  }
+
   private parseOrderBlock(text: string): { name: string; quantity: number }[] {
     const raw = String(text || '')
     const m = raw.match(/\[\s*(?:S[İIiı]PAR[İIiı][SŞsş]|ORDER)\s*\]([\s\S]*?)\[\s*\/\s*(?:S[İIiı]PAR[İIiı][SŞsş]|ORDER)\s*\]/i)
@@ -1366,9 +1390,15 @@ export class WebchatService {
           response = `Siparişinizi tamamlayabilmemiz için şu bilgiyi de paylaşır mısınız: ${missing.join(', ')}?`
           return response
         }
+        const totalP = this.itemsTotal(cfgOrder, pending)
+        const minP = this.minOrderAmount(cfgOrder)
+        if (minP && totalP > 0 && totalP < minP) {
+          response = `Minimum sepet tutarı ${minP} TL. Siparişiniz ${totalP} TL olduğu için onaylayamıyorum; ek ürün ekleyebilir misiniz?`
+          return response
+        }
         this.pendingOrders.delete(sessionKey)
         this.pendingCustomers.delete(sessionKey)
-        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: info.ad || userId || platform + ' Kullanıcısı', customerContact: info.telefon || undefined, products: pending, totalAmount: 0, note: this.orderNoteFromInfo(info), deviceId: sessionKey }).catch(() => {})
+        if (this.ordersService) this.ordersService.create({ tenantId, platform, customerName: info.ad || userId || platform + ' Kullanıcısı', customerContact: info.telefon || undefined, products: pending, totalAmount: totalP, note: this.orderNoteFromInfo(info), deviceId: sessionKey }).catch(() => {})
       }
       if (features.appointments !== false && (allMsgs.includes('randevu') || allMsgs.includes('muayene'))) {
         if (this.appointmentsService) this.appointmentsService.create({ tenantId, platform, customerName: userId || platform + ' Kullanıcısı', date: new Date(Date.now() + 86400000).toISOString(), time: '10:00' }).catch(() => {})
@@ -1468,6 +1498,9 @@ export class WebchatService {
         const infoO = this.pendingCustomers.get(sessionId) || {}
         const missingO = this.missingOrderFields(osO, infoO)
         if (!missingO.length) {
+          const totalO = this.itemsTotal(cfgO, pendingI)
+          const minO = this.minOrderAmount(cfgO)
+          if (minO && totalO > 0 && totalO < minO) return
           this.pendingOrders.delete(sessionId)
           this.pendingCustomers.delete(sessionId)
           if (this.ordersService) {
@@ -1477,7 +1510,7 @@ export class WebchatService {
               customerName: infoO.ad || customerName,
               customerContact: infoO.telefon || customerContact,
               products: pendingI,
-              totalAmount: 0,
+              totalAmount: totalO,
               note: this.orderNoteFromInfo(infoO),
               deviceId: sessionId,
             }).catch(() => {})
