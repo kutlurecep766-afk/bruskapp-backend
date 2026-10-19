@@ -76,6 +76,155 @@ export class NotificationsService {
     })
   }
 
+  private isComplaint(text: string): boolean {
+    const t = String(text || '').toLowerCase()
+    return ['şikayet', 'sikayet', 'berbat', 'kötü', 'kotu', 'rezalet', 'iade', 'memnun değil', 'memnun degil', 'yanlış', 'yanlis', 'geç geldi', 'gec geldi', 'soğuk', 'soguk', 'problem', 'sorun', 'şikayetçi', 'sikayetci', 'berbattı'].some(w => t.includes(w))
+  }
+
+  async getFeed(tenantId: string) {
+    if (!tenantId) return { priority: [], secondary: [], aiFilled: false }
+
+    const [orders, appointments, reservations, leads, messages, notifications] = await Promise.all([
+      this.prisma.order.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 12 }),
+      this.prisma.appointment.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 12 }),
+      this.prisma.reservation.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 12 }),
+      this.prisma.lead.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' }, take: 10 }),
+      this.prisma.message.findMany({ where: { tenantId, direction: 'incoming' }, orderBy: { createdAt: 'desc' }, take: 20 }),
+      this.prisma.notification.findMany({ where: { OR: [{ tenantId }, { tenantId: null }] }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    ])
+
+    const priority: any[] = []
+    const secondary: any[] = []
+
+    for (const o of orders) {
+      const items = Array.isArray(o.products) ? (o.products as any[]) : []
+      priority.push({
+        id: 'order-' + o.id,
+        kind: 'order',
+        priority: 1,
+        title: 'Yeni Sipariş' + (o.trackingCode ? ' #' + o.trackingCode : ''),
+        summary: `${o.customerName} • ${Math.round(Number(o.totalAmount) || 0)} TL • ${items.length} ürün`,
+        createdAt: o.createdAt,
+        read: o.status !== 'pending',
+        raw: `Siparis: ${o.customerName}, ${Math.round(Number(o.totalAmount) || 0)} TL, durum ${o.status}, urunler: ${items.map((i: any) => i?.name || i?.productName || '').filter(Boolean).join(', ')}`,
+      })
+    }
+    for (const a of appointments) {
+      const d = a.date ? new Date(a.date).toLocaleDateString('tr-TR') : ''
+      priority.push({
+        id: 'appt-' + a.id,
+        kind: 'appointment',
+        priority: 1,
+        title: 'Yeni Randevu',
+        summary: `${a.customerName} • ${a.service || 'Hizmet'} • ${d} ${a.time || ''}`.trim(),
+        createdAt: a.createdAt,
+        read: a.status !== 'pending',
+        raw: `Randevu: ${a.customerName}, hizmet ${a.service}, ${d} ${a.time}, durum ${a.status}`,
+      })
+    }
+    for (const r of reservations) {
+      const d = r.date ? new Date(r.date).toLocaleDateString('tr-TR') : ''
+      priority.push({
+        id: 'res-' + r.id,
+        kind: 'reservation',
+        priority: 1,
+        title: 'Yeni Rezervasyon',
+        summary: `${r.customerName} • ${r.guests} kişi • ${d} ${r.time || ''}`.trim(),
+        createdAt: r.createdAt,
+        read: r.status !== 'pending',
+        raw: `Rezervasyon: ${r.customerName}, ${r.guests} kisi, ${d} ${r.time}, durum ${r.status}`,
+      })
+    }
+
+    for (const m of messages) {
+      const complaint = this.isComplaint(m.content)
+      secondary.push({
+        id: 'msg-' + m.id,
+        kind: complaint ? 'complaint' : 'request',
+        priority: 2,
+        title: complaint ? 'Şikayet' : 'Talep',
+        summary: String(m.fromName || m.from || 'Müşteri') + ': ' + String(m.content || '').slice(0, 90),
+        createdAt: m.createdAt,
+        read: false,
+        raw: `Mesaj (${m.platform}) ${m.fromName || m.from}: ${String(m.content || '').slice(0, 300)}`,
+      })
+    }
+    for (const l of leads) {
+      secondary.push({
+        id: 'lead-' + l.id,
+        kind: 'request',
+        priority: 2,
+        title: 'Yeni Talep',
+        summary: `${l.name || 'Ziyaretçi'}${l.phone ? ' • ' + l.phone : ''}${l.needs ? ' • ' + String(l.needs).slice(0, 60) : ''}`,
+        createdAt: l.createdAt,
+        read: false,
+        raw: `Talep: ${l.name}, tel ${l.phone}, ihtiyac ${l.needs}`,
+      })
+    }
+    for (const n of notifications) {
+      const t = String(n.type || '').toLowerCase()
+      const isP1 = t.includes('order') || t.includes('sipariş') || t.includes('siparis') || t.includes('appointment') || t.includes('randevu') || t.includes('reservation') || t.includes('rezervasyon')
+      const item = {
+        id: 'notif-' + n.id,
+        kind: isP1 ? 'order' : 'info',
+        priority: isP1 ? 1 : 2,
+        title: n.title,
+        summary: n.message,
+        createdAt: n.createdAt,
+        read: n.read,
+        raw: n.title + ' ' + n.message,
+      }
+      if (isP1) priority.push(item)
+      else secondary.push(item)
+    }
+
+    priority.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+    secondary.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
+
+    // AI ile ozet doldur (tek cagri)
+    const candidates = [...priority.slice(0, 6), ...secondary.slice(0, 6)]
+    const aiMap = await this.aiSummarize(candidates.map(c => ({ id: c.id, kind: c.kind, text: c.raw })))
+    let aiFilled = false
+    for (const item of [...priority, ...secondary]) {
+      if (aiMap[item.id]) { item.summary = aiMap[item.id]; aiFilled = true }
+      delete item.raw
+    }
+
+    return { priority, secondary, aiFilled }
+  }
+
+  private async aiSummarize(items: { id: string; kind: string; text: string }[]): Promise<Record<string, string>> {
+    const key = process.env.DEEPSEEK_API_KEY || process.env.AI_API_KEY || this.config.get('DEEPSEEK_API_KEY') || this.config.get('AI_API_KEY') || ''
+    const baseUrl = process.env.AI_BASE_URL || 'https://api.deepseek.com/v1/chat/completions'
+    const model = process.env.AI_MODEL || 'deepseek-chat'
+    if (!key || items.length === 0) return {}
+    try {
+      const prompt = 'Asagidaki isletme bildirimlerini Turkce, tek satir, en fazla 12 kelime olacak sekilde ozetle. Sadece su formatta JSON dizi dondur, baska hicbir yazi ekleme: [{"id":"...","ozet":"..."}].\n' +
+        JSON.stringify(items)
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 20000)
+      const res = await fetch(baseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: prompt }], temperature: 0, max_tokens: 1200 }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+      if (!res.ok) return {}
+      const data = await res.json()
+      const content = data.choices?.[0]?.message?.content || ''
+      const jsonStr = (content.match(/\[[\s\S]*\]/) || [content])[0]
+      const arr = JSON.parse(jsonStr)
+      const out: Record<string, string> = {}
+      for (const a of arr) {
+        if (a?.id && a?.ozet) out[String(a.id)] = String(a.ozet)
+      }
+      return out
+    } catch {
+      return {}
+    }
+  }
+
   async markRead(id: number) {
     return this.prisma.notification.update({ where: { id }, data: { read: true } })
   }

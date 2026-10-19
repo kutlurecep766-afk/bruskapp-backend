@@ -63,6 +63,12 @@ export class NotificationsController {
     return { success: true }
   }
 
+  @Get('feed')
+  async getFeed(@Req() req: any) {
+    const tenantId = req.user?.tenantId || ''
+    return this.notificationsService.getFeed(tenantId)
+  }
+
   @Public()
   @Get()
   async getNotifications() {

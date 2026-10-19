@@ -91,6 +91,44 @@ const DEFAULT_CONFIG: ChatBotConfig = {
   knowledgeBase: '',
 }
 
+const TRAIN_SYSTEM = `Sen Bruskapp platformunun yapay zeka KURULUM ASISTANISIN.
+Gorev: Isletme sahibiyle Turkce sohbet ederek isletmesini, urunlerini, hizmetlerini, kurallarini ve SSS'lerini ogrenmek ve ogrendiklerini sistem konfigurasyonuna kaydetmek.
+
+Davranis:
+- Sicak, nazik, kisa ve net konus. Gereksiz uzun yazma.
+- Isletme sahibi bilgi verdikce eksik kalan ONEMLI bilgileri SORARAK netlestir: isletme adi, ne sattigi/aciklamasi, urun veya hizmet + fiyat, calisma saatleri, adres, telefon, siparis/teslimat/odeme kurallari, randevu kurallari, sik sorulan sorular.
+- Ayni bilgiyi tekrar sorma; sadece eksikleri sor. Kullanici "hepsi bu" derse ozet gec ve bitir.
+- Emin olmadigin bilgiyi ASLA uydurma.
+
+Her mesajinda SADECE su iki bolumu uret: once kisa dogal Turkce cevap, sonra (varsa) guncellenecek konfigurasyon JSON blogu.
+
+KONFIGURASYON BLOGU: Ogrendigin/degistirdigin bilgileri asagidaki formatta, cevabinin EN SONUNA yaz. Sadece yeni ogrenilen veya degisen alanlari koy.
+[CONFIG]
+{
+  "businessName": "...",
+  "description": "...",
+  "address": "...",
+  "phone": "...",
+  "hours": "...",
+  "email": "...",
+  "welcomeMessage": "...",
+  "products": [{ "name": "Urun", "price": "150 TL", "description": "", "unit": "adet", "options": [{ "name": "Aci" }], "soldOut": false }],
+  "services": [{ "name": "Hizmet", "duration": "30 dk", "price": "300 TL" }],
+  "orderSettings": { "requireName": true, "requirePhone": true, "requireAddress": false },
+  "appointmentSettings": { "requireName": true, "requirePhone": true, "requireDate": true, "requireTime": true },
+  "faqs": [{ "question": "...", "answer": "..." }],
+  "systemPrompt": "...",
+  "knowledgeBase": "..."
+}
+[/CONFIG]
+
+Kurallar:
+- JSON gecerli olmali; Turkce karakter kullanabilirsin. Fiyatlari sayi degil metin yaz ("150 TL").
+- Yeni bilgi ogrenmediysen blok yazma, sadece soru sor.
+- Sadece isletmenin kurulumuyla ilgili konus; baska konuya girme.
+
+MEVCUT AYARLAR (bos alanlar henuz ogrenilmedi):`
+
 @Injectable()
 export class WebchatService {
   private readonly logger = new Logger(WebchatService.name)
@@ -176,6 +214,92 @@ export class WebchatService {
       data: dataUpdate,
     })
     return merged
+  }
+
+  async resetConfig(tenantId: string): Promise<ChatBotConfig> {
+    await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: { webchatConfig: {} as any },
+    })
+    this.pendingOrders.clear()
+    this.pendingAppts.clear()
+    this.conversations.clear()
+    return this.getConfig(tenantId)
+  }
+
+  async trainChat(tenantId: string, history: { role: string; content: string }[]): Promise<{ reply: string; config: ChatBotConfig; applied: string[] }> {
+    const current = await this.getConfig(tenantId)
+    const msgs: Message[] = [
+      { role: 'system', content: TRAIN_SYSTEM + '\n' + JSON.stringify(current) },
+    ]
+    const clean = (history || []).slice(-24).map(m => ({
+      role: (m.role === 'assistant' ? 'assistant' : 'user') as Message['role'],
+      content: String(m.content || '').slice(0, 4000),
+    }))
+    msgs.push(...clean)
+
+    const raw = await this.rawAI(msgs, 1800)
+    if (!raw) {
+      return { reply: 'Su an yapay zeka baglantisina ulasilamadi. Lutfen birkac saniye sonra tekrar deneyin.', config: current, applied: [] }
+    }
+
+    const { reply, patch } = this.extractConfigBlock(raw)
+    const applied = Object.keys(patch)
+    let config = current
+    if (applied.length > 0) {
+      config = await this.updateConfig(tenantId, patch)
+    }
+    return { reply, config, applied }
+  }
+
+  private extractConfigBlock(text: string): { reply: string; patch: Partial<ChatBotConfig> } {
+    let reply = String(text || '')
+    const patch: any = {}
+    const m = reply.match(/\[CONFIG\]([\s\S]*?)\[\/CONFIG\]/i)
+    if (m) {
+      reply = reply.replace(m[0], '')
+      try {
+        const parsed = JSON.parse(m[1].trim())
+        const allowed = ['businessName', 'description', 'address', 'phone', 'hours', 'email', 'welcomeMessage', 'products', 'services', 'orderSettings', 'appointmentSettings', 'faqs', 'systemPrompt', 'knowledgeBase', 'modes']
+        for (const k of allowed) {
+          const v = parsed?.[k]
+          if (v === undefined || v === null) continue
+          if (typeof v === 'string' && v.trim() === '') continue
+          patch[k] = v
+        }
+      } catch {
+        this.logger.warn('trainChat: CONFIG blogu ayristirilamadi')
+      }
+    }
+    reply = reply.replace(/```/g, '').replace(/\n{3,}/g, '\n\n').trim()
+    return { reply, patch }
+  }
+
+  private async rawAI(messages: Message[], maxTokens = 1600): Promise<string | null> {
+    if (!this.aiApiKey) return null
+    try {
+      const body = JSON.stringify({
+        model: this.aiModel,
+        messages,
+        temperature: 0.4,
+        max_tokens: maxTokens,
+      })
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT)
+      const res = await fetch(this.aiBaseUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.aiApiKey}` },
+        body,
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+      if (!res.ok) return null
+      const data = await res.json()
+      return data.choices?.[0]?.message?.content || null
+    } catch (e: any) {
+      this.logger.error(`rawAI hatasi: ${e?.message || 'bilinmeyen hata'}`)
+      return null
+    }
   }
 
   private parseItems(message: string, products: any[]): { name: string; quantity: number }[] {

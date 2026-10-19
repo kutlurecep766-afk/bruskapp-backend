@@ -35,4 +35,16 @@ export class WebchatController {
     const tenantId = req.user?.tenantId || 'default'
     return this.webchat.updateConfig(tenantId, body)
   }
+
+  @Post('train')
+  async train(@Req() req: any, @Body() body: { messages?: { role: string; content: string }[] }): Promise<{ reply: string; config: ChatBotConfig; applied: string[] }> {
+    const tenantId = req.user?.tenantId || 'default'
+    return this.webchat.trainChat(tenantId, body?.messages || [])
+  }
+
+  @Post('reset')
+  async reset(@Req() req: any): Promise<ChatBotConfig> {
+    const tenantId = req.user?.tenantId || 'default'
+    return this.webchat.resetConfig(tenantId)
+  }
 }
