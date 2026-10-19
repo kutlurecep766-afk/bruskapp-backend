@@ -116,6 +116,8 @@ Davranis:
 - Ayni bilgiyi tekrar sorma; sadece eksikleri sor. Kullanici "hepsi bu" derse ozet gec ve bitir.
 - Emin olmadigin bilgiyi ASLA uydurma.
 - Markdown/isaretleme KULLANMA: yildiz (** veya *), kare (#), alt cizgi ve ters tirnak ile vurgulama YAPMA. Madde listesi verirken satirlari "- " yerine "• " ile baslat veya duz cumle halinde yaz.
+- Sen sadece bu isletmenin kurulum asistanisin. Bruskapp platformundan veya platform urunlerinden (CRM, chatbot, sesli asistan, QR menu vb.) ASLA bahsetme.
+- Isletme adini ve ne yaptigini (description) ogrendiginde mutlaka CONFIG bloguna yaz. description kisa ve isletmeye ozgu olsun (orn. "Doner ve durum satan restoran").
 
 Her mesajinda SADECE su iki bolumu uret: once kisa dogal Turkce cevap, sonra (varsa) guncellenecek konfigurasyon JSON blogu.
 
@@ -182,7 +184,12 @@ export class WebchatService {
   }
 
   private normalizeConfig(cfg: ChatBotConfig): ChatBotConfig {
-    if (this.isLegacyWelcome(cfg.welcomeMessage)) cfg.welcomeMessage = ''
+    const isPlatform = (cfg.businessName || '').toLowerCase() === 'bruskapp'
+    if (!isPlatform) {
+      if (this.isLegacyWelcome(cfg.welcomeMessage)) cfg.welcomeMessage = ''
+      if (cfg.description === DEFAULT_CONFIG.description) cfg.description = ''
+      if (cfg.email === DEFAULT_CONFIG.email) cfg.email = ''
+    }
     return cfg
   }
 
@@ -202,7 +209,7 @@ export class WebchatService {
       return this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
     }
 
-    return this.defaultConfig(tenant?.name)
+    return this.normalizeConfig(this.defaultConfig(tenant?.name))
   }
   async getPublicConfig(slug: string): Promise<{ businessName: string; welcomeMessage: string; products: any[] }> {
     const tenant = await this.prisma.tenant.findUnique({
@@ -753,7 +760,7 @@ export class WebchatService {
     if (tenant?.webchatConfig && typeof tenant.webchatConfig === 'object' && Object.keys(tenant.webchatConfig as any).length > 0) {
       return this.normalizeConfig({ ...this.defaultConfig(tenant.name), ...(tenant.webchatConfig as any) })
     }
-    return this.defaultConfig(tenant?.name)
+    return this.normalizeConfig(this.defaultConfig(tenant?.name))
   }
 
   private async getUserRecordsContext(tenantId?: string, sessionId?: string, conv?: Conversation): Promise<string | null> {
@@ -801,9 +808,18 @@ export class WebchatService {
   private buildBaseSystem(config: ChatBotConfig): string {
     const c = config
     let prompt = `Sen ${c.businessName} işletmesinin yapay zeka asistanısın.\n`
-    prompt += `İşletme: ${c.description} | Adres: ${c.address} | E-posta: ${c.email} | Telefon: ${c.phone || 'Yok'} | Çalışma: ${c.hours}\n`
+    const bizInfo: string[] = []
+    if (c.description) bizInfo.push(`İşletme: ${c.description}`)
+    if (c.address) bizInfo.push(`Adres: ${c.address}`)
+    if (c.email) bizInfo.push(`E-posta: ${c.email}`)
+    if (c.phone) bizInfo.push(`Telefon: ${c.phone}`)
+    if (c.hours) bizInfo.push(`Çalışma: ${c.hours}`)
+    if (bizInfo.length) prompt += bizInfo.join(' | ') + '\n'
     if (c.welcomeMessage) prompt += `Karşılama: ${c.welcomeMessage}\n`
     prompt += `\nKurallar:\n`
+    if ((c.businessName || '').toLowerCase() !== 'bruskapp') {
+      prompt += `- SADECE ${c.businessName} isletmesi hakkinda konus. Baska markalardan veya platform ozelliklerinden (CRM, chatbot, sesli asistan, QR menu vb.) ASLA bahsetme.\n`
+    }
     prompt += `- Turkce, kisa ve oz cevap ver.\n`
     prompt += `- ZORUNLU: Tum Turkce karakterleri dogru kullan.\n`
     prompt += `- ASAGIDAKI BILGI HAVUZUNU KULLAN. Kullanici sorusunu oku, bilgi havuzunda AYNI KONUYU bul, buldugun bilgiyi cevap olarak ver.\n`
